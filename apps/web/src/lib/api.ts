@@ -3,23 +3,30 @@ import {
   AssignmentDto,
   AssignTenderDto,
   CreateCustomerDto,
+  CreateLineItemDto,
+  CreatePriceObservationDto,
   CreateSupplierDto,
   CreateTenderDto,
   CustomerDto,
   DocumentDto,
   HealthDto,
+  LineItemDto,
   ListTendersQuery,
   LoginDto,
   LoginResponseDto,
   MeDto,
+  PriceObservationDto,
   SupplierDto,
   TenderDto,
+  TenderPricingDto,
   TransitionTenderDto,
   UpdateCustomerDto,
+  UpdateLineItemDto,
   UpdateMyNameDto,
   UpdateSupplierDto,
   UpdateTenderDto,
   UploadDocumentDto,
+  UpsertPricingDto,
   UserListItemDto,
 } from '@evertrust/shared';
 import { API_URL } from './env';
@@ -31,6 +38,10 @@ const SupplierListDto = z.array(SupplierDto);
 const CustomerListDto = z.array(CustomerDto);
 const UserListDto = z.array(UserListItemDto);
 const DocumentListDto = z.array(DocumentDto);
+// Phase 5a pricing: list shapes validated as arrays so a single drifted row
+// fails the whole list loud instead of rendering undefined down the page.
+const LineItemListDto = z.array(LineItemDto);
+const PriceObservationListDto = z.array(PriceObservationDto);
 // GET /tenders/:id/assignment returns the ACTIVE assignment or null.
 const AssignmentOrNullDto = AssignmentDto.nullable();
 
@@ -242,6 +253,79 @@ export const api = {
         DocumentDto,
       );
     },
+
+    // ---- Phase 5a: LV line items (read/create are tender-scoped) ----
+    listLineItems: (id: string, signal?: AbortSignal) =>
+      request<LineItemDto[]>(`/tenders/${id}/line-items`, {
+        schema: LineItemListDto,
+        signal,
+      }),
+
+    createLineItem: (id: string, input: z.infer<typeof CreateLineItemDto>) =>
+      request<LineItemDto>(`/tenders/${id}/line-items`, {
+        method: 'POST',
+        body: CreateLineItemDto.parse(input),
+        schema: LineItemDto,
+      }),
+
+    // ---- Phase 5a: computed pricing view + margin + finalize ----
+    getPricing: (id: string, signal?: AbortSignal) =>
+      request<TenderPricingDto>(`/tenders/${id}/pricing`, {
+        schema: TenderPricingDto,
+        signal,
+      }),
+
+    setMargin: (id: string, input: z.infer<typeof UpsertPricingDto>) =>
+      request<TenderPricingDto>(`/tenders/${id}/pricing`, {
+        method: 'PUT',
+        body: UpsertPricingDto.parse(input),
+        schema: TenderPricingDto,
+      }),
+
+    // Lock pricing FINAL; the server also transitions the tender to
+    // CUSTOMER_PRICING (so callers invalidate the tender query too).
+    finalizePricing: (id: string) =>
+      request<TenderPricingDto>(`/tenders/${id}/pricing/finalize`, {
+        method: 'POST',
+        schema: TenderPricingDto,
+      }),
+  },
+
+  // ---- Phase 5a: line items addressed by their own id (update/delete) ----
+  lineItems: {
+    update: (id: string, input: z.infer<typeof UpdateLineItemDto>) =>
+      request<LineItemDto>(`/line-items/${id}`, {
+        method: 'PATCH',
+        body: UpdateLineItemDto.parse(input),
+        schema: LineItemDto,
+      }),
+
+    delete: (id: string) =>
+      request<void>(`/line-items/${id}`, { method: 'DELETE' }),
+
+    // A line's price evidence (newest-first; the engine treats input order as
+    // such on equal-weight ties).
+    listObservations: (id: string, signal?: AbortSignal) =>
+      request<PriceObservationDto[]>(`/line-items/${id}/observations`, {
+        schema: PriceObservationListDto,
+        signal,
+      }),
+
+    addObservation: (
+      id: string,
+      input: z.infer<typeof CreatePriceObservationDto>,
+    ) =>
+      request<PriceObservationDto>(`/line-items/${id}/observations`, {
+        method: 'POST',
+        body: CreatePriceObservationDto.parse(input),
+        schema: PriceObservationDto,
+      }),
+  },
+
+  // ---- Phase 5a: price observations addressed by their own id (delete) ----
+  priceObservations: {
+    delete: (id: string) =>
+      request<void>(`/price-observations/${id}`, { method: 'DELETE' }),
   },
 
   // ---- Documents (binary download) ----

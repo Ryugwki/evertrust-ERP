@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Calculator } from 'lucide-react';
 import type { TenderDto } from '@evertrust/shared';
 import { useTender } from '@/hooks/use-tenders';
 import { useCustomer } from '@/hooks/use-customers';
 import { Can } from '@/components/auth/can';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -80,9 +81,19 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{tender.title}</h1>
         </div>
-        <Can permission="tenders:write">
-          <TenderEditDialog tender={tender} />
-        </Can>
+        <div className="flex items-center gap-2">
+          <Can permission="pricing:read">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/tenders/${tender.id}/pricing`}>
+                <Calculator />
+                Pricing workbench
+              </Link>
+            </Button>
+          </Can>
+          <Can permission="tenders:write">
+            <TenderEditDialog tender={tender} />
+          </Can>
+        </div>
       </div>
 
       <Card>

@@ -19,6 +19,15 @@ export const queryKeys = {
     // Phase 4: the tender's ACTIVE assignment and its TYPE 1 documents.
     assignment: (id: string) => ['tenders', 'assignment', id] as const,
     documents: (id: string) => ['tenders', 'documents', id] as const,
+    // Phase 5a: the tender's LV line items and its computed pricing view.
+    lineItems: (id: string) => ['tenders', 'line-items', id] as const,
+    pricing: (id: string) => ['tenders', 'pricing', id] as const,
+  },
+
+  // Phase 5a: a single line's price observations (keyed by line-item id).
+  lineItems: {
+    all: ['line-items'] as const,
+    observations: (id: string) => ['line-items', 'observations', id] as const,
   },
 
   suppliers: {
