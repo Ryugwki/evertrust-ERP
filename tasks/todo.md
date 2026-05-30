@@ -42,13 +42,10 @@ Kha's lane; out of automation scope. No write paths.
 - [x] **TYPE 1 doc upload** — Multer disk storage + uploads volume; upload/list/download on the tender detail.
 - [ ] Missing-docs detector (R20) — deferred.
 
-### Phase 5 — Pricing (R23–R29) ★ HIGHEST VALUE — ⬜ not started
-- [ ] **LV line items** per tender (`line_items` exists).
-- [ ] **PriceObservation** model: sources (SUPPLIER_QUOTE/MANUAL/AI_ESTIMATE/COMPETITOR_WINNER/OUR_SUBMITTED/OUR_BENCHMARK/IBAU_HISTORICAL); weights **90/50/40**; quality signal **REAL_QUOTES/MIXED/ESTIMATE_ONLY**; confidence **cap 60**.
-- [ ] **R/Y/G** flagging + high-risk rule (≥35% benchmark-only LV OR top-5 lines unbacked).
-- [ ] **Claude** review of red/risky items (assist; humans decide). L5 refine → L3 sign-off.
-- [ ] **Hermes** — supplier RFQ (Gmail-only). Track A pricing ∥ Track B docs from R24.
-- [ ] Pricing workbench UI (set final price/margin/supplier). Status `PIC_PRICING` → `CUSTOMER_PRICING`.
+### Phase 5 — Pricing (R23–R29) ★ HIGHEST VALUE — 🟡 5a DONE (2026-05-30)
+- [x] **5a — LV line items** + **PriceObservation** evidence (7 sources; weights 90/80/70/60/50/45/40; REAL/MIXED/ESTIMATE; confidence cap 60) + **R/Y/G** + high-risk rule (≥35% unbacked OR top-5 unbacked) + **pricing workbench** UI. Finalize → `CUSTOMER_PRICING`. (API+web live, 77 tests.)
+- [ ] **5b — Claude** price-assist for unbacked/red lines (AI suggests; humans decide). L5 refine → L3 sign-off.
+- [ ] **5c — Hermes** supplier RFQ (Gmail/n8n). Track A pricing ∥ Track B docs from R24.
 
 ### Phase 6 — Client approval + deadline check (R30–R31) — ⬜ not started
 - [ ] **Customer-approval gate** — written approval required; **no approval → no submission** (enforced in code). `approval_requests` exists.
@@ -72,4 +69,5 @@ KPIs, win/loss, contract, billing, supplier review. Manual for now.
 
 ## Review / changelog
 - **2026-05-30** — Platform foundation done & live (M0 + M1 + Combine). Tender core on the canonical 7-status / L1–L5 / Vergabe-ID domain. Tracker reconciled to the 8-phase workflow.
-- **2026-05-30** — **Phase 4 done & live** (`9512dc6`): tender assignment + TYPE 1 doc upload/download. **Next:** Phase 5 — Pricing.
+- **2026-05-30** — **Phase 4 done & live** (`9512dc6`): tender assignment + TYPE 1 doc upload/download.
+- **2026-05-30** — **Phase 5a done & live** (`245362d` API + `639c876` web): LV line items + PriceObservation engine (R/Y/G, confidence cap) + pricing workbench. **Next:** 5b (Claude assist) / Phase 6 (approval gate).
