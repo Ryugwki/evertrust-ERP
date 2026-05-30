@@ -36,11 +36,11 @@ Kha's lane; out of automation scope. No write paths.
 - [ ] Send to matched clients (queue-for-approval) → reject loops to next; all-reject → trash. State: pending→sent→awaiting→confirmed|rejected|timeout.
 - [ ] Open Q: definition of "all clients reject → trash".
 
-### Phase 4 — Record open + assign + upload (R20–R22) — 🟡 PARTIAL (next)
+### Phase 4 — Record open + assign + upload (R20–R22) — ✅ DONE (2026-05-30)
 - [x] Open ERP tender record.
-- [ ] **Auto-assign L5 PIC** (`assignments` table exists → endpoint + UI + algorithm [round-robin / niche / load-balanced, TBD]).
-- [ ] **TYPE 1 doc upload** into the per-tender folder (`documents` table exists → upload + storage).
-- [ ] Missing-docs detector (R20).
+- [x] **Assign L5 PIC** — manual: `POST /tenders/:id/assign` + assignee card (supersedes prior ACTIVE; L5 can't self-assign). Auto-assign algorithm deferred.
+- [x] **TYPE 1 doc upload** — Multer disk storage + uploads volume; upload/list/download on the tender detail.
+- [ ] Missing-docs detector (R20) — deferred.
 
 ### Phase 5 — Pricing (R23–R29) ★ HIGHEST VALUE — ⬜ not started
 - [ ] **LV line items** per tender (`line_items` exists).
@@ -71,4 +71,5 @@ KPIs, win/loss, contract, billing, supplier review. Manual for now.
 - GDPR/EU · observability · "no written approval = no submission" · T-5/T-2 · TYPE 1/2 · GAEB X81/X83/X86.
 
 ## Review / changelog
-- **2026-05-30** — Platform foundation done & live (M0 + M1 + Combine). Tender core on the canonical 7-status / L1–L5 / Vergabe-ID domain. Tracker reconciled to the 8-phase workflow. **Next:** finish Phase 4 (assign + TYPE 1) → Phase 5 pricing.
+- **2026-05-30** — Platform foundation done & live (M0 + M1 + Combine). Tender core on the canonical 7-status / L1–L5 / Vergabe-ID domain. Tracker reconciled to the 8-phase workflow.
+- **2026-05-30** — **Phase 4 done & live** (`9512dc6`): tender assignment + TYPE 1 doc upload/download. **Next:** Phase 5 — Pricing.
