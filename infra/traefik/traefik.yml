@@ -1,0 +1,32 @@
+# Traefik v3 static config — local M0 only.
+#
+# HTTP ONLY. TLS is intentionally DEFERRED to pre-PROD (no certresolver, no :443).
+# Routing is driven by Docker provider labels on the web/api/n8n services; the
+# *.localhost hosts all resolve to 127.0.0.1 by convention.
+#
+# The direct host port mappings on web/api/n8n remain in place too, so service
+# health is verifiable without going through Traefik. Traefik only has to come
+# up healthy for M0.
+
+api:
+  # Dashboard on the :traefik (8080) entrypoint, no auth (local only).
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  web:
+    address: ":80"
+  traefik:
+    address: ":8080"
+
+providers:
+  docker:
+    # Only expose containers that explicitly opt in via traefik.enable=true.
+    exposedByDefault: false
+
+log:
+  level: INFO
+
+ping:
+  # Enables GET /ping on the :traefik entrypoint for the healthcheck.
+  entryPoint: traefik

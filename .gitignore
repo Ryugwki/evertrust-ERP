@@ -9,6 +9,19 @@ lerna-debug.log*
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# Ignore all .md files everywhere
+*.md
+
+# Ignore .md files only in the root directory
+/*.md
+
+# Ignore .md files in a specific folder
+docs/*.md
+
+# Ignore all .md files EXCEPT README.md
+*.md
+!README.md
+
 # Runtime data
 pids
 *.pid
@@ -141,3 +154,9 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Turborepo
+.turbo/
+
+# macOS
+.DS_Store

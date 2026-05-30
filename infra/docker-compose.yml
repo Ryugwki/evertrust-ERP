@@ -1,0 +1,220 @@
+# Evertrust ERP — M0 local stack.
+#
+# Run from this directory:   docker compose up -d --build
+# (or from repo root:        docker compose -f infra/docker-compose.yml up -d --build)
+#
+# Build context for the image builds is the REPO ROOT (..) because the pnpm
+# workspace must be copied whole.
+#
+# All variables come from ../.env (see ../.env.example for documentation).
+# Direct host port mappings are kept on every web-facing service so health is
+# verifiable WITHOUT going through Traefik.
+
+name: evertrust
+
+services:
+  # --- Postgres (app DB `evertrust` + a separate `n8n` DB) --------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Init scripts run once on an empty data dir; 01-... creates the n8n DB.
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # --- Redis (n8n queue backend) ---------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # --- Migrate (one-shot: drizzle migrate + seed, then exit 0) ---------------
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.node
+    image: evertrust-node:m0
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # drizzle-kit + tsx are resolvable from packages/db; pnpm --filter sets CWD
+    # there. Runs migrations then seeds the two dev users, then the container
+    # exits 0 and `api` is released by its completed_successfully condition.
+    command:
+      - sh
+      - -c
+      - "corepack pnpm --filter @evertrust/db db:migrate && corepack pnpm --filter @evertrust/db db:seed"
+    restart: "no"
+
+  # --- API (NestJS, run under tsx so it can require the TS workspace deps) ----
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.node
+    image: evertrust-node:m0
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      PORT: "3001"
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      LOG_LEVEL: ${LOG_LEVEL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # `pnpm --filter @evertrust/db exec` runs with CWD=packages/db, where the tsx
+    # loader resolves. We then launch the PRE-BUILT api dist (baked by the image)
+    # under tsx, which transpiles @evertrust/db / @evertrust/shared TS source on
+    # the fly. node binds 0.0.0.0 via Nest's app.listen.
+    command:
+      - sh
+      - -c
+      - "corepack pnpm --filter @evertrust/db exec node --import tsx /app/apps/api/dist/main.js"
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.services.api.loadbalancer.server.port=3001"
+    restart: unless-stopped
+
+  # --- Web (Next.js standalone) ----------------------------------------------
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    image: evertrust-web:m0
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/login"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`web.localhost`)"
+      - "traefik.http.routers.web.entrypoints=web"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+    restart: unless-stopped
+
+  # --- n8n main (queue mode) -------------------------------------------------
+  n8n-main:
+    image: n8nio/n8n:2.23.1
+    environment:
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: redis
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_PORT: "5678"
+      # Quieten first-run noise; harmless for local M0.
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5678/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`n8n.localhost`)"
+      - "traefik.http.routers.n8n.entrypoints=web"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+    restart: unless-stopped
+
+  # --- n8n worker ------------------------------------------------------------
+  n8n-worker:
+    image: n8nio/n8n:2.23.1
+    command: worker
+    environment:
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: redis
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+    depends_on:
+      n8n-main:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Traefik (HTTP only for M0; TLS deferred to pre-PROD) -------------------
+  traefik:
+    image: traefik:v3
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  n8n-data:

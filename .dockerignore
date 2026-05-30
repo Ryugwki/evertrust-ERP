@@ -1,0 +1,20 @@
+# Keep the Docker build context small AND ensure host-built (macOS) artifacts
+# never leak into the linux images. Everything below is regenerated inside the
+# image by `pnpm install` / `nest build` / `next build`.
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+.git
+**/*.tsbuildinfo
+
+# Local env + editor/OS cruft.
+.env
+**/.env.local
+**/.env.*.local
+.DS_Store
+**/.DS_Store
+
+# Docs / non-build assets.
+**/*.md
+*.pdf

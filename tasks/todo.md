@@ -7,12 +7,13 @@ Convention: check items as completed; every milestone ends with a verification g
 - [ ] Confirm plan + resolve open decisions (`BUILD_PLAN.md` §12): OCR approach, DeepSeek EU hosting, GAEB licensing, ibau feed, team/timeline
 - [ ] Confirm the 5 architecture corrections are accepted (`BUILD_PLAN.md` §2)
 
-## M0 — Foundations (~1 wk)
-- [ ] Monorepo: Turborepo + pnpm workspaces (`apps/`, `packages/`, `services/`, `infra/`)
-- [ ] Docker Compose: app, Postgres, n8n (queue mode: main + worker + Redis), Traefik/Caddy TLS
-- [ ] CI pipeline (lint, typecheck, test, build); env/secrets management
-- [ ] Base auth skeleton (Auth.js/Lucia)
-- [ ] **Verify:** `docker compose up` → all services healthy; CI green; seeded user logs in
+## M0 — Foundations — ✅ DONE 2026-05-30 (stack verified running)
+- [x] Monorepo: Turborepo + pnpm workspaces (`apps/{api,web}`, `packages/{shared,db}`, `infra/`); pnpm via corepack proxy
+- [x] Docker Compose: postgres+pgvector, redis, migrate(one-shot), api, web, n8n main+worker (queue mode), traefik — all healthy
+- [x] CI pipeline: `.github/workflows/ci.yml` (pnpm + lint/typecheck/test/build) — green-on-remote pending a GitHub remote
+- [x] Auth skeleton: **NestJS JWT + Passport + argon2** (API is the auth authority; chosen over Auth.js/Lucia), RBAC roles, creds in `auth_credentials`
+- [x] **Verify:** `docker compose up` all healthy ✓ · seeded user logs in ✓ · audited mutation writes immutable `audit_log` row ✓ · cross-workspace typecheck/test/lint green ✓
+- Follow-ups (non-blocking): seed idempotency (onConflictDoNothing); production-minimal images (compile workspace deps vs runtime-tsx); `audit_log.entityId` nullable for entity-less events; login 201→200; migrate off `next lint` before Next 16
 
 ## M1 — ERP core ★ first build (~2–3 wk)
 - [ ] **Drizzle schema + migrations — verified data model (build target below).**
@@ -114,4 +115,6 @@ Convention: check items as completed; every milestone ends with a verification g
 - [ ] Update `tasks/lessons.md` after any correction
 
 ## Review
-_(fill in after each milestone: what was done, what's verified, what's left)_
+
+**M0 — Foundations (2026-05-30):** Monorepo (pnpm+Turborepo): `@evertrust/shared` (Zod DTOs), `@evertrust/db` (Drizzle — 19 tables incl. `auth_credentials`, pgvector/HNSW), `apps/api` (NestJS: JWT auth, RBAC, Zod env, pino, audit interceptor), `apps/web` (Next.js 15 + shadcn + TanStack Query: login + protected dashboard). Full Docker stack verified up & healthy; seeded login + audited mutation proven via curl + psql; cross-workspace typecheck/test/lint green. CI written (needs a remote to run). Built via delegated subagents, each self-verified. See M0 follow-ups above.
+_(next: M1 — ERP core)_
