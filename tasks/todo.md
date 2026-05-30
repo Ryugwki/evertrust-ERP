@@ -1,120 +1,74 @@
-# Evertrust ERP — Build TODO
+# Evertrust ERP — Build Tracker
 
-Plan source: `docs/BUILD_PLAN.md`. Decisions locked: TypeScript full-stack · Next.js (App Router) frontend · ERP core first · self-hosted (Docker/VPS).
-Convention: check items as completed; every milestone ends with a verification gate; nothing is "done" until verified.
+**Sources:** `docs/evertrust/` (canonical company spec) · `docs/COMBINE.md` (stack×domain reconciliation) · `docs/BUILD_PLAN.md` (architecture).
+**Stack (kept per the Combine):** Next.js + NestJS + Drizzle + JWT + PostgreSQL 16 · multi-tenant · permission-RBAC · immutable audit · **Claude-only** · n8n **Cloud** (writes via ERP API; Docker = local dev only).
+**Roadmap = the 52-row / 8-phase tender workflow** (`docs/evertrust/08-workflow-canonical.md`) — not M-numbers.
+Convention: nothing is "done" until its verify gate passes; update `tasks/lessons.md` after any correction.
 
-## Plan check (before building)
-- [ ] Confirm plan + resolve open decisions (`BUILD_PLAN.md` §12): OCR approach, DeepSeek EU hosting, GAEB licensing, ibau feed, team/timeline
-- [ ] Confirm the 5 architecture corrections are accepted (`BUILD_PLAN.md` §2)
+---
 
-## M0 — Foundations — ✅ DONE 2026-05-30 (stack verified running)
-- [x] Monorepo: Turborepo + pnpm workspaces (`apps/{api,web}`, `packages/{shared,db}`, `infra/`); pnpm via corepack proxy
-- [x] Docker Compose: postgres+pgvector, redis, migrate(one-shot), api, web, n8n main+worker (queue mode), traefik — all healthy
-- [x] CI pipeline: `.github/workflows/ci.yml` (pnpm + lint/typecheck/test/build) — green-on-remote pending a GitHub remote
-- [x] Auth skeleton: **NestJS JWT + Passport + argon2** (API is the auth authority; chosen over Auth.js/Lucia), RBAC roles, creds in `auth_credentials`
-- [x] **Verify:** `docker compose up` all healthy ✓ · seeded user logs in ✓ · audited mutation writes immutable `audit_log` row ✓ · cross-workspace typecheck/test/lint green ✓
-- Follow-ups (non-blocking): seed idempotency (onConflictDoNothing); production-minimal images (compile workspace deps vs runtime-tsx); `audit_log.entityId` nullable for entity-less events; login 201→200; migrate off `next lint` before Next 16
+## Platform foundation — ✅ DONE & LIVE (2026-05-30)
+Built, verified, committed (`93333f7` → `74385cd`). Running: backend in Docker, web on local dev.
+- [x] Monorepo (pnpm + Turborepo): `apps/{api,web}`, `packages/{shared,db}`, `infra/`; CI workflow.
+- [x] Auth: NestJS JWT + argon2; **L1–L5 roles + lanes** (OPERATIONS/MARKETING/HR); creds in `auth_credentials`.
+- [x] Multi-tenancy: `organizations` + `organizationId` (SaaS-ready, single-tenant today); every query org-scoped.
+- [x] **Permission RBAC** (19-perm catalog → L1–L5 matrix in `@evertrust/shared`); API-enforced + `useCan`/`<Can>` UI gating.
+- [x] **Immutable audit log** on every mutation (org-stamped; actor/before/after).
+- [x] Data model (~20 tables, Drizzle + pgvector): tenders (Vergabe-ID, 7-status), suppliers, customers, line_items, supplier_prices, pricing, approval_requests, compliance_checks, doc_packages, submission_receipts, amendments, assignments, audit_log, workflow_executions, ai_runs, embeddings, organizations, users, auth_credentials. Single clean baseline migration.
+- [x] **Tender core** (≈ Phase 4 record): CRUD + the **7-status state machine** (guarded transitions), tenant-scoped, permission-gated, audited. Supplier/customer registries.
+- [x] Web: landing page · login/logout (stale-session safe) · dashboard · tenders (list + **status board** + detail + create/edit/transition) · suppliers · customers · RBAC-gated nav.
+- Follow-ups (non-blocking): `/auth/me` 401 on missing-user (auto-heal stale sessions) · production-minimal Docker images (runtime-tsx now) · `audit_log.entityId` nullable for entity-less events · CI green needs a GitHub remote.
 
-## M1 — ERP core ★ first build (~2–3 wk)
-- [ ] **Drizzle schema + migrations — verified data model (build target below).**
-  Conventions: UUID PKs · `timestamptz` everywhere · `createdAt/updatedAt` on all tables · **`numeric` for all money + a `currency` column (never float)** · pg enums + Zod unions for every `status/role/type/source/kind/regime` · FK + index on every `*Id` · `unique(source, externalId)` on Tender · unique `n8nExecutionId` on WorkflowExecution · **`AuditLog` append-only** (no update/delete) · pgvector HNSW index on `Embedding.vector`.
+---
 
-  ```
-  User(id, role[PIC|PRICING|MANAGEMENT|ADMIN], name, email, active, createdAt)
-  Customer(id, name, contact, niches, createdAt)
-  Supplier(id, name, niches, capabilities, fitScore, contact, createdAt)
-  Tender(id, externalId, source, title, buyer, customerId?, regime[VOB_A|VgV|UVgO]?, niche?,
-         status[DETECTED|QUALIFIED|OPEN|PRICING|APPROVAL|SUBMITTED|WON|LOST],
-         estimatedValue?, currency, isAboveThreshold, questionsDeadlineAt?, submissionDeadlineAt,
-         location, createdAt, updatedAt)                       unique(source, externalId)
-  Document(id, tenderId, type[TYPE1|TYPE2], kind, storageUrl, mimeType?,
-           ocrStatus[PENDING|DONE|FAILED], ocrText?, parsedRef?, sourceParentDocId?, uploadedBy?, createdAt)
-  Amendment(id, tenderId, detectedAt, diff, affectsDeadline)
-  Assignment(id, tenderId, picId, workloadScore, reason, assignedAt, status)
-  LineItem(id, tenderId, sourceDocId?, parentId?, position, description, longText?, qty, unit,
-           spec, brand, std, bidEp?, bidGp?)                   -- deterministic
-  SupplierPrice(id, lineItemId, supplierId, price, currency,
-                source[QUOTE|ERP|OLD_TENDER|EXCEL|CATALOG|EMAIL],
-                confidence, marginEstimate?, rygFlag[RED|YELLOW|GREEN], matchedAt)
-  Pricing(id, tenderId, status[DRAFT|REVIEW|FINAL], subtotal, margin, finalPrice, currency,
-          decidedBy?, decidedAt?, createdAt)
-  ApprovalRequest(id, tenderId, type[PRICING|CUSTOMER|QC], status[PENDING|APPROVED|REJECTED],
-                  evidenceUrl?, requestedAt, requestedBy?, decidedBy?, decidedAt?)
-  ComplianceCheck(id, tenderId, regime, s123Pass, s124Flags[], eignungComplete, missingForms[],
-                  reviewedBy?, checkedAt)
-  DocPackage(id, tenderId, checklist, missing[], complete, generatedAt)
-  SubmissionReceipt(id, tenderId, submittedBy, submittedAt, proofUrl)
-  -- cross-cutting --
-  AuditLog(id, entity, entityId, action, actorType[USER|SYSTEM|N8N|DEEPSEEK|CLAUDE],
-           actorId?, before, after, correlationId?, at)        -- append-only
-  WorkflowExecution(id, n8nExecutionId, workflowName, source, tenderId?, status, retries,
-                    startedAt, finishedAt?, durationMs?, error?, at)
-  AiRun(id, tenderId?, taskType, model, tokensIn, tokensOut, eurCost, confidence, escalated, at)
-  Embedding(id, refType, refId, model, dim, content?, vector(N), createdAt)   -- N = embedding model dim, set at M5
-  ```
-  ⚠️ Open: confirm `buyer` (public contracting authority) vs `Customer` (client who gives written approval). `Tender.customerId` kept **nullable** until confirmed — model works either way.
-- [ ] `KpiSnapshot` — schema deferred to M7 (not built in M1)
-- [ ] Tender CRUD + status state machine (detected→…→won/lost)
-- [ ] Supplier & customer registries
-- [ ] RBAC roles (PIC/Pricing/Management/Admin)
-- [ ] Immutable audit log on every state change
-- [ ] Dashboard: tender list + status board + detail view (Next.js + shadcn/ui)
-- [ ] **Verify:** create→assign→advance a tender by hand; all changes in audit log; RBAC blocks unauthorized; state-machine integration tests pass
+## The 8-phase roadmap
 
-## M2 — Ingestion & parsing (~2–3 wk)
-- [ ] Document upload + storage; TYPE1/TYPE2 classification
-- [ ] OCR service (Azure DI EU or self-hosted DeepSeek-OCR) behind a clean interface
-- [ ] GAEB service (Dangl .NET container) → unified JSON
-- [ ] Scribe extraction (DeepSeek strict-mode → Zod schema) → line_item rows
-- [ ] X83 → X84 model + mandatory-position-priced validation
-- [ ] **Verify:** real X83 + scanned PDF → correct line items; X84 round-trip; accuracy spot-checked vs ground truth
+### Phase 1 — Partner scouting (R01–R14) ❄ FROZEN
+Kha's lane; out of automation scope. No write paths.
 
-## M3 — Intake automation / Phase 2 (~2 wk)
-- [ ] Argus n8n hourly schedule: TED API + DÖE feeds (+ ibau if licensed); scraping fallback (ToS/robots-respecting)
-- [ ] Dedupe + amendment/deadline-change detection
-- [ ] Sieve deterministic bid/skip rules (niche, blacklist, location, budget) in API
-- [ ] **Verify:** scheduled run ingests live tenders, dedupes, applies rules; bid/skip matches rules test suite
+### Phase 2 — Tender search + intake (R15–R15c) — ⬜ not started
+- [ ] **Argus** — portal search (TED API + DÖE; DTVP/Service-Bund; licensed feeds first, ToS-respecting scrape fallback). n8n **Cloud** → ERP API.
+- [ ] Download package → stage **TYPE 1** docs (R15a). High-volume/complex detector (R15b). Per-client profile pre-filter (R15c).
+- [ ] **Scribe** — parse GAEB **X81/X83** + PDF (OCR) → structured fields → tender record + line items.
 
-## M4 — Matching & assignment / Phases 3–4 (~2 wk)
-- [ ] Tender↔customer fit scoring + ranking
-- [ ] Outreach draft generation (human-approved before any send)
-- [ ] Auto-assign PIC (workload/niche/performance/deadline)
-- [ ] **Verify:** ranking correct on known case; assignment respects workload caps; no outreach without human approval
+### Phase 3 — Per-client shortlist + confirm/reject (R16–R19) — ⬜ not started
+- [ ] **Sieve** — match tender vs active client profiles (niche/LV value/location/size/blacklist) → shortlist.
+- [ ] Send to matched clients (queue-for-approval) → reject loops to next; all-reject → trash. State: pending→sent→awaiting→confirmed|rejected|timeout.
+- [ ] Open Q: definition of "all clients reject → trash".
 
-## M5 — Pricing engine / Phase 5 ★ highest value (~3–4 wk)
-- [ ] Supplier price matching (history/ERP/old tenders/Excel/catalogs)
-- [ ] AI output: closest match, last price, confidence, margin estimate
-- [ ] Red/Yellow/Green flagging (abnormal pricing/units/margins/unknown suppliers)
-- [ ] Claude review of red/risky items
-- [ ] Pricing workbench UI — humans set final price/margin/supplier
-- [ ] **Verify:** price math deterministic + unit-tested; R/Y/G fires correctly; humans retain final-price control; diff vs a historically priced tender
+### Phase 4 — Record open + assign + upload (R20–R22) — 🟡 PARTIAL (next)
+- [x] Open ERP tender record.
+- [ ] **Auto-assign L5 PIC** (`assignments` table exists → endpoint + UI + algorithm [round-robin / niche / load-balanced, TBD]).
+- [ ] **TYPE 1 doc upload** into the per-tender folder (`documents` table exists → upload + storage).
+- [ ] Missing-docs detector (R20).
 
-## M6 — Approval + docs/QC/submit / Phases 6–7 (~3 wk)
-- [ ] Customer-approval gate (n8n Wait + ERP UI); **no written approval → no submission, enforced in code**
-- [ ] Reminder cadence T-5/T-3/T-1
-- [ ] TYPE2 assembly + completeness/missing-form detection (per-tender required-forms manifest)
-- [ ] Claude compliance review: §123 hard gate, §124 flags, Eignung completeness; regime detection (VOB/A vs VgV/UVgO) with runtime thresholds
-- [ ] Submission package + receipt archiving (portal submit stays human)
-- [ ] **Verify:** submission impossible without recorded approval; catches seeded missing Formblatt-124 + §123 trigger; package validated vs manifest
+### Phase 5 — Pricing (R23–R29) ★ HIGHEST VALUE — ⬜ not started
+- [ ] **LV line items** per tender (`line_items` exists).
+- [ ] **PriceObservation** model: sources (SUPPLIER_QUOTE/MANUAL/AI_ESTIMATE/COMPETITOR_WINNER/OUR_SUBMITTED/OUR_BENCHMARK/IBAU_HISTORICAL); weights **90/50/40**; quality signal **REAL_QUOTES/MIXED/ESTIMATE_ONLY**; confidence **cap 60**.
+- [ ] **R/Y/G** flagging + high-risk rule (≥35% benchmark-only LV OR top-5 lines unbacked).
+- [ ] **Claude** review of red/risky items (assist; humans decide). L5 refine → L3 sign-off.
+- [ ] **Hermes** — supplier RFQ (Gmail-only). Track A pricing ∥ Track B docs from R24.
+- [ ] Pricing workbench UI (set final price/margin/supplier). Status `PIC_PRICING` → `CUSTOMER_PRICING`.
 
-## M7 — Analytics / Phase 8 (~2 wk)
-- [ ] KPIs: win/loss, supplier scoring, profitability, cost-per-tender
-- [ ] AI cost / 70-30 split dashboard (from ai_run)
-- [ ] Claude trend + loss-pattern analysis
-- [ ] **Verify:** KPIs reconcile vs raw records; cost dashboard matches provider invoices within tolerance
+### Phase 6 — Client approval + deadline check (R30–R31) — ⬜ not started
+- [ ] **Customer-approval gate** — written approval required; **no approval → no submission** (enforced in code). `approval_requests` exists.
+- [ ] **T-2** deadline safety check + escalation (L4→L3→L2). Reminder cadence.
 
-## M8 — Partner scouting / Phase 1 (~2 wk, later)
-- [ ] Supplier scraping + CRM enrichment + niche classification + capability summaries
-- [ ] Claude strategic partner/risk evaluation
-- [ ] **Verify:** enrichment spot-checked; no unsolicited automated outreach
+### Phase 7 — Documents + QC + submit (R32–R37) — ⬜ not started
+- [ ] **TYPE 2** doc prep (master checklist); completeness/missing-form detection (`doc_packages`, `compliance_checks` exist).
+- [ ] **L4 QC** (conditional: risky/complex/high-value/sensitive).
+- [ ] Submit at **T-2** (portal stays human) → **R36–37 evidence logging** (proof + timestamp + file list) — *lowest-risk first automation*.
 
-## Cross-cutting (every milestone)
-- [ ] Security/GDPR: EU-only inference, least privilege, TIA for any non-EU processor
-- [ ] Observability: OpenTelemetry traces incl. ai_run cost/confidence
-- [ ] AI eval harness for extraction/matching/compliance tasks
-- [ ] Update `tasks/lessons.md` after any correction
+### Phase 8 — Result + follow-up (R38–R52) — ⏸ PARKED
+KPIs, win/loss, contract, billing, supplier review. Manual for now.
 
-## Review
+---
 
-**M0 — Foundations (2026-05-30):** Monorepo (pnpm+Turborepo): `@evertrust/shared` (Zod DTOs), `@evertrust/db` (Drizzle — 19 tables incl. `auth_credentials`, pgvector/HNSW), `apps/api` (NestJS: JWT auth, RBAC, Zod env, pino, audit interceptor), `apps/web` (Next.js 15 + shadcn + TanStack Query: login + protected dashboard). Full Docker stack verified up & healthy; seeded login + audited mutation proven via curl + psql; cross-workspace typecheck/test/lint green. CI written (needs a remote to run). Built via delegated subagents, each self-verified. See M0 follow-ups above.
-_(next: M1 — ERP core)_
+## Cross-cutting (every phase)
+- AI: **Claude only** (`@anthropic-ai/sdk`). Agent codenames: Argus/Scribe/Sieve/Hermes/Hydra/Eve/Nero/Aza/Cipher.
+- n8n: **Cloud**, writes via ERP API; naming `[Lane] - [Function] - [TEST|PROD]`; ≤12 nodes; 8 promotion conditions; ERP-first.
+- Dashboard frames **Trev's 5**: urgent / blocked / who-owns / deadline-at-risk / needs-decision.
+- GDPR/EU · observability · "no written approval = no submission" · T-5/T-2 · TYPE 1/2 · GAEB X81/X83/X86.
+
+## Review / changelog
+- **2026-05-30** — Platform foundation done & live (M0 + M1 + Combine). Tender core on the canonical 7-status / L1–L5 / Vergabe-ID domain. Tracker reconciled to the 8-phase workflow. **Next:** finish Phase 4 (assign + TYPE 1) → Phase 5 pricing.
