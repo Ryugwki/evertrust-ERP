@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { mkdir } from 'node:fs/promises';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
@@ -13,6 +14,10 @@ async function bootstrap(): Promise<void> {
   app.useLogger(app.get(Logger));
 
   const config = app.get(AppConfigService);
+
+  // Ensure the document upload directory exists before any multipart request
+  // can hit the disk-storage handler (mkdir -p; idempotent).
+  await mkdir(config.get('UPLOAD_DIR'), { recursive: true });
 
   // Parse cookies so the JWT strategy can read the httpOnly access_token cookie.
   app.use(cookieParser());

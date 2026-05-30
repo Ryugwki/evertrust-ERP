@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { schema } from '@evertrust/db';
 import { TendersController } from '../src/tenders/tenders.controller';
 import { TendersService } from '../src/tenders/tenders.service';
+import { AssignmentsService } from '../src/tenders/assignments.service';
 import { AuditInterceptor } from '../src/common/audit.interceptor';
 import type { AuthUser } from '../src/auth/auth.types';
 import { getAuditContext } from '../src/common/audit-context';
@@ -64,7 +65,10 @@ function setup() {
     [schema.auditLog, auditLog],
   ]);
   const { db } = makeFakeDb(tableMap);
-  const controller = new TendersController(new TendersService(db));
+  const controller = new TendersController(
+    new TendersService(db),
+    new AssignmentsService(db),
+  );
   const interceptor = new AuditInterceptor(db, loggerStub);
   return { controller, interceptor, auditLog };
 }

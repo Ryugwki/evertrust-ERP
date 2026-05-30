@@ -22,6 +22,10 @@ export const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+
+  // Filesystem directory where uploaded tender documents are stored (Phase 4).
+  // Created at boot if missing. In containers this is a mounted volume.
+  UPLOAD_DIR: z.string().min(1).default('./uploads'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

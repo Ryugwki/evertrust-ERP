@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  AssignTenderDto as AssignTenderSchema,
   CreateTenderDto as CreateTenderSchema,
   ListTendersQuery as ListTendersQuerySchema,
   TransitionTenderDto as TransitionTenderSchema,
@@ -14,3 +15,4 @@ export class TransitionTenderBodyDto extends createZodDto(
   TransitionTenderSchema,
 ) {}
 export class ListTendersQueryDto extends createZodDto(ListTendersQuerySchema) {}
+export class AssignTenderBodyDto extends createZodDto(AssignTenderSchema) {}

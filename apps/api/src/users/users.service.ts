@@ -1,8 +1,9 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
-import type { MeDto } from '@evertrust/shared';
+import type { MeDto, UserListItemDto } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
+import { tenantScope } from '../common/tenant';
 
 export interface UpdateNameResult {
   before: { name: string };
@@ -12,6 +13,23 @@ export interface UpdateNameResult {
 @Injectable()
 export class UsersService {
   constructor(@Inject(DB) private readonly db: DbClient) {}
+
+  // List the users in the caller's organization (id/name/email/role/lane only),
+  // ordered by name. Tenant-scoped — never returns users from another org.
+  // Used by the assignee picker; no credential/auth fields are selected.
+  async listForOrg(orgId: string): Promise<UserListItemDto[]> {
+    return this.db
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        role: schema.users.role,
+        lane: schema.users.lane,
+      })
+      .from(schema.users)
+      .where(tenantScope(orgId, schema.users))
+      .orderBy(asc(schema.users.name));
+  }
 
   // Update the user's display name and return both the prior name (for the audit
   // `before`) and the full updated user (for the response + audit `after`).

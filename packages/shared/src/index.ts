@@ -335,3 +335,73 @@ export type CreateCustomerDto = z.infer<typeof CreateCustomerDto>;
 
 export const UpdateCustomerDto = CreateCustomerDto.partial();
 export type UpdateCustomerDto = z.infer<typeof UpdateCustomerDto>;
+
+// ============================================================================
+// PHASE 4 (R20–R22): users list · tender assignment · TYPE 1 documents
+// ============================================================================
+
+// ---- Users (org directory, read-only list) ----
+// Lightweight user shape for org-scoped pickers (e.g. the assignee Select). Never
+// exposes auth/credential fields. lane is OPTIONAL to tolerate a pre-lane row.
+export const UserListItemDto = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  email: z.string().email(),
+  role: UserRole,
+  lane: Lane.optional(),
+});
+export type UserListItemDto = z.infer<typeof UserListItemDto>;
+
+// ---- Tender assignment (manual L5-PIC assign) ----
+// Body for POST /tenders/:id/assign. reason is optional context (<= 500 chars).
+export const AssignTenderDto = z.object({
+  picId: z.string().uuid(),
+  reason: z.string().max(500).optional(),
+});
+export type AssignTenderDto = z.infer<typeof AssignTenderDto>;
+
+// The ACTIVE assignment of a tender (picName joined from users). assignedAt is an
+// ISO string over the wire; status is the lifecycle token (ACTIVE/REASSIGNED).
+export const AssignmentDto = z.object({
+  id: z.string().uuid(),
+  tenderId: z.string().uuid(),
+  picId: z.string().uuid(),
+  picName: z.string(),
+  reason: z.string().nullable(),
+  assignedAt: z.string(),
+  status: z.string(),
+});
+export type AssignmentDto = z.infer<typeof AssignmentDto>;
+
+// ---- Documents (TYPE 1 upload) ----
+// Mirrors the document_type pgEnum (@evertrust/db).
+export const DocumentType = z.enum(['TYPE1', 'TYPE2']);
+export type DocumentType = z.infer<typeof DocumentType>;
+
+// Mirrors the ocr_status pgEnum.
+export const OcrStatus = z.enum(['PENDING', 'DONE', 'FAILED']);
+export type OcrStatus = z.infer<typeof OcrStatus>;
+
+// Read shape of a documents row over HTTP. Metadata only — the binary is fetched
+// separately via GET /documents/:id/download. Nullable columns are .nullable().
+export const DocumentDto = z.object({
+  id: z.string().uuid(),
+  tenderId: z.string().uuid(),
+  type: DocumentType,
+  kind: z.string().nullable(),
+  originalName: z.string(),
+  mimeType: z.string().nullable(),
+  sizeBytes: z.number().nullable(),
+  ocrStatus: OcrStatus,
+  uploadedBy: z.string().uuid().nullable(),
+  createdAt: z.string(),
+});
+export type DocumentDto = z.infer<typeof DocumentDto>;
+
+// Multipart upload fields for POST /tenders/:id/documents (the file rides
+// alongside as `file`). type defaults to TYPE1; kind is optional free-text.
+export const UploadDocumentDto = z.object({
+  type: DocumentType.default('TYPE1'),
+  kind: z.string().max(200).optional(),
+});
+export type UploadDocumentDto = z.infer<typeof UploadDocumentDto>;

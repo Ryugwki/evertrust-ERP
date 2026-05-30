@@ -43,6 +43,14 @@ function contextForCustomerCreate(user: AuthUser): ExecutionContext {
   );
 }
 
+function contextForTenderAssign(user: AuthUser): ExecutionContext {
+  return contextFor(
+    () => TendersController.prototype.assign,
+    () => TendersController,
+    user,
+  );
+}
+
 // WHY: POST /tenders is gated by tenders:write — every L-role holds it. POST
 // /customers is gated by customers:write — L5 lacks it, L3 holds it. This binds
 // the routes' declared permissions to the role mapping end-to-end, so a
@@ -68,5 +76,23 @@ describe('tender + customer write permission gating', () => {
 
   it('allows an L3 to create a customer (has customers:write)', () => {
     expect(guard.canActivate(contextForCustomerCreate(L3))).toBe(true);
+  });
+
+  // WHY (Phase 4 / Combine matrix): assignment is an L1–L4 authority. L5 (PIC)
+  // can be assigned but cannot assign — POST /tenders/:id/assign is gated by
+  // tenders:assign, which L5 lacks. This pins the canonical permission split.
+  it('L3 holds tenders:assign; L5 does not', () => {
+    expect(hasPermission('L3', 'tenders:assign')).toBe(true);
+    expect(hasPermission('L5', 'tenders:assign')).toBe(false);
+  });
+
+  it('forbids an L5 from assigning a tender (lacks tenders:assign)', () => {
+    expect(() => guard.canActivate(contextForTenderAssign(L5))).toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('allows an L3 to assign a tender (has tenders:assign)', () => {
+    expect(guard.canActivate(contextForTenderAssign(L3))).toBe(true);
   });
 });

@@ -10,12 +10,14 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import type { TenderDto } from '@evertrust/shared';
+import type { AssignmentDto, TenderDto } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
 import { TendersService } from './tenders.service';
+import { AssignmentsService } from './assignments.service';
 import {
+  AssignTenderBodyDto,
   CreateTenderBodyDto,
   ListTendersQueryDto,
   TransitionTenderBodyDto,
@@ -28,7 +30,10 @@ import {
 // audit_log row (entity 'tenders', entityId = the tender id).
 @Controller('tenders')
 export class TendersController {
-  constructor(private readonly tenders: TendersService) {}
+  constructor(
+    private readonly tenders: TendersService,
+    private readonly assignments: AssignmentsService,
+  ) {}
 
   @RequirePermissions('tenders:read')
   @Get()
@@ -105,5 +110,41 @@ export class TendersController {
       after: { status: after.status },
     });
     return after as unknown as TenderDto;
+  }
+
+  // The current ACTIVE assignment of the tender, or null when unassigned.
+  @RequirePermissions('tenders:read')
+  @Get(':id/assignment')
+  getAssignment(
+    @OrgId() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<AssignmentDto | null> {
+    return this.assignments.getActive(orgId, id);
+  }
+
+  // Manually assign the tender to a PIC (Phase 4 / R21). Supersedes any prior
+  // ACTIVE assignment. 404 if the tender is not in the org; 400 if picId is not
+  // a user in the same org. Audited (entity 'tenders', action 'ASSIGN').
+  @RequirePermissions('tenders:assign')
+  @Post(':id/assign')
+  async assign(
+    @OrgId() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: AssignTenderBodyDto,
+    @Req() req: Request,
+  ): Promise<AssignmentDto> {
+    const assignment = await this.assignments.assign(
+      orgId,
+      id,
+      body.picId,
+      body.reason,
+    );
+    setAuditContext(req, {
+      entity: 'tenders',
+      entityId: id,
+      action: 'ASSIGN',
+      after: assignment,
+    });
+    return assignment;
   }
 }

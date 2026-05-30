@@ -80,6 +80,11 @@ services:
       PORT: "3001"
       CORS_ORIGINS: ${CORS_ORIGINS}
       LOG_LEVEL: ${LOG_LEVEL}
+      # Document upload target; backed by the `uploads` named volume below so
+      # files survive container restarts.
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -218,3 +223,4 @@ services:
 volumes:
   postgres-data:
   n8n-data:
+  uploads:

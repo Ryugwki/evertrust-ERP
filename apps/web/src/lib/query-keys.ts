@@ -6,10 +6,19 @@ import type { ListTendersQuery } from '@evertrust/shared';
 export const queryKeys = {
   me: ['me'] as const,
 
+  // Org user directory (assignee picker).
+  users: {
+    all: ['users'] as const,
+    list: () => ['users', 'list'] as const,
+  },
+
   tenders: {
     all: ['tenders'] as const,
     list: (query?: ListTendersQuery) => ['tenders', 'list', query ?? {}] as const,
     detail: (id: string) => ['tenders', 'detail', id] as const,
+    // Phase 4: the tender's ACTIVE assignment and its TYPE 1 documents.
+    assignment: (id: string) => ['tenders', 'assignment', id] as const,
+    documents: (id: string) => ['tenders', 'documents', id] as const,
   },
 
   suppliers: {

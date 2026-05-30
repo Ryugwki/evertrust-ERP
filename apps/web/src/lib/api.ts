@@ -1,9 +1,12 @@
 import { z } from 'zod';
 import {
+  AssignmentDto,
+  AssignTenderDto,
   CreateCustomerDto,
   CreateSupplierDto,
   CreateTenderDto,
   CustomerDto,
+  DocumentDto,
   HealthDto,
   ListTendersQuery,
   LoginDto,
@@ -16,6 +19,8 @@ import {
   UpdateMyNameDto,
   UpdateSupplierDto,
   UpdateTenderDto,
+  UploadDocumentDto,
+  UserListItemDto,
 } from '@evertrust/shared';
 import { API_URL } from './env';
 
@@ -24,6 +29,10 @@ import { API_URL } from './env';
 const TenderListDto = z.array(TenderDto);
 const SupplierListDto = z.array(SupplierDto);
 const CustomerListDto = z.array(CustomerDto);
+const UserListDto = z.array(UserListItemDto);
+const DocumentListDto = z.array(DocumentDto);
+// GET /tenders/:id/assignment returns the ACTIVE assignment or null.
+const AssignmentOrNullDto = AssignmentDto.nullable();
 
 // Build a `?status=...` query string from the (optional) typed list filter. Kept
 // tiny and explicit; only adds keys that are set.
@@ -91,6 +100,38 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   return parsed.data as T;
 }
 
+// Multipart POST for file uploads. Distinct from request() because the body is a
+// FormData (the browser sets the multipart Content-Type + boundary itself — we
+// must NOT set it). Still credentials:'include' (cookie auth) and still validates
+// the JSON response against the shared contract.
+async function uploadRequest<T>(
+  path: string,
+  form: FormData,
+  schema: z.ZodTypeAny,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, 'Network error: could not reach the API.');
+  }
+
+  if (!res.ok) {
+    throw new ApiError(res.status, await readErrorMessage(res));
+  }
+
+  const json: unknown = await res.json();
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    throw new ApiError(res.status, 'Unexpected response shape from API.');
+  }
+  return parsed.data as T;
+}
+
 // Best-effort human message from a NestJS error body ({ message } | { message: [] }).
 async function readErrorMessage(res: Response): Promise<string> {
   try {
@@ -127,6 +168,12 @@ export const api = {
       schema: MeDto,
     }),
 
+  // ---- Users (org directory for pickers) ----
+  users: {
+    list: (signal?: AbortSignal) =>
+      request<UserListItemDto[]>('/users', { schema: UserListDto, signal }),
+  },
+
   // ---- Tenders ----
   tenders: {
     list: (query?: z.infer<typeof ListTendersQuery>, signal?: AbortSignal) =>
@@ -158,6 +205,50 @@ export const api = {
         body: TransitionTenderDto.parse(input),
         schema: TenderDto,
       }),
+
+    // ---- Phase 4: assignment ----
+    getAssignment: (id: string, signal?: AbortSignal) =>
+      request<AssignmentDto | null>(`/tenders/${id}/assignment`, {
+        schema: AssignmentOrNullDto,
+        signal,
+      }),
+
+    assign: (id: string, input: z.infer<typeof AssignTenderDto>) =>
+      request<AssignmentDto>(`/tenders/${id}/assign`, {
+        method: 'POST',
+        body: AssignTenderDto.parse(input),
+        schema: AssignmentDto,
+      }),
+
+    // ---- Phase 4: TYPE 1 documents ----
+    listDocuments: (id: string, signal?: AbortSignal) =>
+      request<DocumentDto[]>(`/tenders/${id}/documents`, {
+        schema: DocumentListDto,
+        signal,
+      }),
+
+    uploadDocument: (
+      id: string,
+      file: File,
+      input: z.infer<typeof UploadDocumentDto>,
+    ) => {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('type', input.type);
+      if (input.kind) form.append('kind', input.kind);
+      return uploadRequest<DocumentDto>(
+        `/tenders/${id}/documents`,
+        form,
+        DocumentDto,
+      );
+    },
+  },
+
+  // ---- Documents (binary download) ----
+  documents: {
+    // The browser navigates/links straight to this URL; the httpOnly auth cookie
+    // rides along (same-site) so no Authorization header is needed.
+    downloadUrl: (id: string) => `${API_URL}/documents/${id}/download`,
   },
 
   // ---- Suppliers ----

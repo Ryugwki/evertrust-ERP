@@ -78,6 +78,20 @@ export function formatDate(iso: string | null): string {
   });
 }
 
+// Format a byte count as a compact human size (e.g. "1.2 MB"). Dash for null.
+export function formatBytes(bytes: number | null): string {
+  if (bytes === null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${value.toFixed(1)} ${units[i]}`;
+}
+
 // Format an ISO timestamp as date + time (used on the detail page for audit-ish
 // fields like created/updated).
 export function formatDateTime(iso: string | null): string {

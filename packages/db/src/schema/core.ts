@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -143,9 +144,13 @@ export const documents = pgTable(
       .notNull()
       .references(() => tenders.id),
     type: documentTypeEnum('type').notNull(),
-    kind: text('kind').notNull(),
+    kind: text('kind'),
     storageUrl: text('storage_url').notNull(),
+    // Client-supplied original filename of the uploaded file (Phase 4 upload).
+    originalName: text('original_name').notNull(),
     mimeType: text('mime_type'),
+    // Size of the stored file in bytes; null when unknown (e.g. legacy rows).
+    sizeBytes: integer('size_bytes'),
     ocrStatus: ocrStatusEnum('ocr_status').notNull().default('PENDING'),
     ocrText: text('ocr_text'),
     parsedRef: text('parsed_ref'),

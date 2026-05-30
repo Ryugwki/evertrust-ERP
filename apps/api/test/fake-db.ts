@@ -56,6 +56,8 @@ const COLUMN_TO_KEY: Record<string, string> = {
   status: 'status',
   vergabe_id: 'vergabeId',
   source: 'source',
+  tender_id: 'tenderId',
+  pic_id: 'picId',
 };
 
 function rowMatches(row: Record<string, unknown>, cond: ParsedCondition): boolean {

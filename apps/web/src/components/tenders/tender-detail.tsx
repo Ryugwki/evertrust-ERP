@@ -23,6 +23,8 @@ import {
 import { StatusBadge } from './status-badge';
 import { TenderTransition } from './tender-transition';
 import { TenderEditDialog } from './tender-edit-dialog';
+import { TenderAssigneeCard } from './tender-assignee-card';
+import { TenderDocumentsCard } from './tender-documents-card';
 
 // Tender detail surface: status shown prominently, all fields, a write-gated Edit
 // dialog, and the transition control (only legal next states, each
@@ -96,6 +98,8 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
         </CardContent>
       </Card>
 
+      <TenderAssigneeCard tenderId={tender.id} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Details</CardTitle>
@@ -139,6 +143,8 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
           </dl>
         </CardContent>
       </Card>
+
+      <TenderDocumentsCard tenderId={tender.id} />
     </>
   );
 }
