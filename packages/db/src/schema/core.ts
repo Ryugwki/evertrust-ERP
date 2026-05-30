@@ -68,8 +68,8 @@ export const suppliers = pgTable(
   'suppliers',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Tenant boundary. supplier_prices reference a supplier and inherit tenancy
-    // from it; they do NOT carry their own organizationId.
+    // Tenant boundary. price_observations reference a supplier (optionally) and
+    // inherit tenancy from it; they do NOT carry their own organizationId.
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id),

@@ -8,6 +8,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { TendersModule } from './tenders/tenders.module';
+import { PricingModule } from './pricing/pricing.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { CustomersModule } from './customers/customers.module';
@@ -24,6 +25,7 @@ import { AuditInterceptor } from './common/audit.interceptor';
     AuthModule,
     UsersModule,
     TendersModule,
+    PricingModule,
     DocumentsModule,
     SuppliersModule,
     CustomersModule,

@@ -33,16 +33,19 @@ export const documentTypeEnum = pgEnum('document_type', ['TYPE1', 'TYPE2']);
 
 export const ocrStatusEnum = pgEnum('ocr_status', ['PENDING', 'DONE', 'FAILED']);
 
-export const supplierPriceSourceEnum = pgEnum('supplier_price_source', [
-  'QUOTE',
-  'ERP',
-  'OLD_TENDER',
-  'EXCEL',
-  'CATALOG',
-  'EMAIL',
+// Provenance of a single price_observation. Named `price_obs_source` (NOT
+// reusing any prior enum name) so drizzle never has to ALTER an existing enum's
+// values — value changes on a live enum are unreliable (see tasks/lessons.md).
+// REAL vs estimate weighting lives in @evertrust/shared (SOURCE_WEIGHT).
+export const priceObsSourceEnum = pgEnum('price_obs_source', [
+  'SUPPLIER_QUOTE',
+  'MANUAL',
+  'AI_ESTIMATE',
+  'COMPETITOR_WINNER',
+  'OUR_SUBMITTED',
+  'OUR_BENCHMARK',
+  'IBAU_HISTORICAL',
 ]);
-
-export const rygFlagEnum = pgEnum('ryg_flag', ['RED', 'YELLOW', 'GREEN']);
 
 export const pricingStatusEnum = pgEnum('pricing_status', [
   'DRAFT',

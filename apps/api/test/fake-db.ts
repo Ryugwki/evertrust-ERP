@@ -58,6 +58,9 @@ const COLUMN_TO_KEY: Record<string, string> = {
   source: 'source',
   tender_id: 'tenderId',
   pic_id: 'picId',
+  line_item_id: 'lineItemId',
+  supplier_id: 'supplierId',
+  created_by: 'createdBy',
 };
 
 function rowMatches(row: Record<string, unknown>, cond: ParsedCondition): boolean {
@@ -184,6 +187,23 @@ export function makeFakeDb(
               };
             },
           };
+        },
+      };
+    },
+
+    // DELETE: db.delete(table).where(cond) — removes matching rows in place.
+    // Returns a thenable so `await db.delete(...).where(...)` resolves.
+    delete(table: unknown) {
+      const ft = tableFor(table);
+      return {
+        where(cond: unknown) {
+          const parsed = parseCondition(cond);
+          const kept: Row[] = [];
+          for (const r of ft.rows) {
+            if (!rowMatches(r, parsed)) kept.push(r);
+          }
+          ft.rows = kept;
+          return Promise.resolve(undefined);
         },
       };
     },

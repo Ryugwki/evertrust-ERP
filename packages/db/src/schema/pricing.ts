@@ -8,11 +8,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { documents, suppliers, tenders, users } from './core';
-import {
-  pricingStatusEnum,
-  rygFlagEnum,
-  supplierPriceSourceEnum,
-} from './enums';
+import { priceObsSourceEnum, pricingStatusEnum } from './enums';
 
 // Tenancy is inherited via the parent tender (lineItems.tenderId); no own
 // organizationId column.
@@ -44,31 +40,37 @@ export const lineItems = pgTable(
   ],
 );
 
-// Tenancy is inherited via the parent line item / supplier (supplierPrices
-// references both); no own organizationId column.
-export const supplierPrices = pgTable(
-  'supplier_prices',
+// Price evidence for a single line item — the multi-source intake the Phase 5a
+// pricing engine reasons over. Tenancy is inherited via lineItem -> tender; no
+// own organizationId column. supplierId is NULLABLE (a MANUAL/AI_ESTIMATE/
+// COMPETITOR_WINNER observation is not tied to a supplier). The engine that turns
+// these rows into a suggested price + confidence + signal lives in
+// @evertrust/shared (computeLinePricing); this table is pure evidence.
+export const priceObservations = pgTable(
+  'price_observations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     lineItemId: uuid('line_item_id')
       .notNull()
       .references(() => lineItems.id),
-    supplierId: uuid('supplier_id')
-      .notNull()
-      .references(() => suppliers.id),
+    // NULLABLE: only supplier-sourced observations reference a supplier.
+    supplierId: uuid('supplier_id').references(() => suppliers.id),
+    source: priceObsSourceEnum('source').notNull(),
     price: numeric('price').notNull(),
     currency: varchar('currency', { length: 3 }).notNull().default('EUR'),
-    source: supplierPriceSourceEnum('source').notNull(),
-    confidence: numeric('confidence', { precision: 4, scale: 3 }).notNull(),
-    marginEstimate: numeric('margin_estimate'),
-    rygFlag: rygFlagEnum('ryg_flag').notNull(),
-    matchedAt: timestamp('matched_at', { withTimezone: true })
+    note: text('note'),
+    createdBy: uuid('created_by').references(() => users.id),
+    observedAt: timestamp('observed_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (t) => [
-    index('supplier_prices_line_item_id_idx').on(t.lineItemId),
-    index('supplier_prices_supplier_id_idx').on(t.supplierId),
+    index('price_observations_line_item_id_idx').on(t.lineItemId),
+    index('price_observations_supplier_id_idx').on(t.supplierId),
+    index('price_observations_created_by_idx').on(t.createdBy),
   ],
 );
 

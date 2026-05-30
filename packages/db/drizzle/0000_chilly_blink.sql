@@ -6,9 +6,8 @@ CREATE TYPE "public"."audit_actor_type" AS ENUM('USER', 'SYSTEM', 'N8N', 'DEEPSE
 CREATE TYPE "public"."document_type" AS ENUM('TYPE1', 'TYPE2');--> statement-breakpoint
 CREATE TYPE "public"."lane" AS ENUM('OPERATIONS', 'MARKETING', 'HR');--> statement-breakpoint
 CREATE TYPE "public"."ocr_status" AS ENUM('PENDING', 'DONE', 'FAILED');--> statement-breakpoint
+CREATE TYPE "public"."price_obs_source" AS ENUM('SUPPLIER_QUOTE', 'MANUAL', 'AI_ESTIMATE', 'COMPETITOR_WINNER', 'OUR_SUBMITTED', 'OUR_BENCHMARK', 'IBAU_HISTORICAL');--> statement-breakpoint
 CREATE TYPE "public"."pricing_status" AS ENUM('DRAFT', 'REVIEW', 'FINAL');--> statement-breakpoint
-CREATE TYPE "public"."ryg_flag" AS ENUM('RED', 'YELLOW', 'GREEN');--> statement-breakpoint
-CREATE TYPE "public"."supplier_price_source" AS ENUM('QUOTE', 'ERP', 'OLD_TENDER', 'EXCEL', 'CATALOG', 'EMAIL');--> statement-breakpoint
 CREATE TYPE "public"."tender_regime" AS ENUM('VOB_A', 'VgV', 'UVgO');--> statement-breakpoint
 CREATE TYPE "public"."tender_status" AS ENUM('NOT_STARTED', 'PIC_PRICING', 'CUSTOMER_PRICING', 'DOCUMENTS', 'SUBMITTED', 'AWARDED', 'LOST');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('L1', 'L2', 'L3', 'L4', 'L5');--> statement-breakpoint
@@ -50,9 +49,11 @@ CREATE TABLE IF NOT EXISTS "documents" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tender_id" uuid NOT NULL,
 	"type" "document_type" NOT NULL,
-	"kind" text NOT NULL,
+	"kind" text,
 	"storage_url" text NOT NULL,
+	"original_name" text NOT NULL,
 	"mime_type" text,
+	"size_bytes" integer,
 	"ocr_status" "ocr_status" DEFAULT 'PENDING' NOT NULL,
 	"ocr_text" text,
 	"parsed_ref" text,
@@ -128,6 +129,19 @@ CREATE TABLE IF NOT EXISTS "line_items" (
 	"bid_gp" numeric
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "price_observations" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"line_item_id" uuid NOT NULL,
+	"supplier_id" uuid,
+	"source" "price_obs_source" NOT NULL,
+	"price" numeric NOT NULL,
+	"currency" varchar(3) DEFAULT 'EUR' NOT NULL,
+	"note" text,
+	"created_by" uuid,
+	"observed_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "pricings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tender_id" uuid NOT NULL,
@@ -139,19 +153,6 @@ CREATE TABLE IF NOT EXISTS "pricings" (
 	"decided_by" uuid,
 	"decided_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "supplier_prices" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"line_item_id" uuid NOT NULL,
-	"supplier_id" uuid NOT NULL,
-	"price" numeric NOT NULL,
-	"currency" varchar(3) DEFAULT 'EUR' NOT NULL,
-	"source" "supplier_price_source" NOT NULL,
-	"confidence" numeric(4, 3) NOT NULL,
-	"margin_estimate" numeric,
-	"ryg_flag" "ryg_flag" NOT NULL,
-	"matched_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "approval_requests" (
@@ -341,6 +342,24 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "price_observations" ADD CONSTRAINT "price_observations_line_item_id_line_items_id_fk" FOREIGN KEY ("line_item_id") REFERENCES "public"."line_items"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "price_observations" ADD CONSTRAINT "price_observations_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "price_observations" ADD CONSTRAINT "price_observations_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "pricings" ADD CONSTRAINT "pricings_tender_id_tenders_id_fk" FOREIGN KEY ("tender_id") REFERENCES "public"."tenders"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -348,18 +367,6 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "pricings" ADD CONSTRAINT "pricings_decided_by_users_id_fk" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "supplier_prices" ADD CONSTRAINT "supplier_prices_line_item_id_line_items_id_fk" FOREIGN KEY ("line_item_id") REFERENCES "public"."line_items"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "supplier_prices" ADD CONSTRAINT "supplier_prices_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -465,10 +472,11 @@ CREATE INDEX IF NOT EXISTS "users_organization_id_idx" ON "users" USING btree ("
 CREATE INDEX IF NOT EXISTS "line_items_tender_id_idx" ON "line_items" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "line_items_source_doc_id_idx" ON "line_items" USING btree ("source_doc_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "line_items_parent_id_idx" ON "line_items" USING btree ("parent_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "price_observations_line_item_id_idx" ON "price_observations" USING btree ("line_item_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "price_observations_supplier_id_idx" ON "price_observations" USING btree ("supplier_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "price_observations_created_by_idx" ON "price_observations" USING btree ("created_by");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "pricings_tender_id_idx" ON "pricings" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "pricings_decided_by_idx" ON "pricings" USING btree ("decided_by");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "supplier_prices_line_item_id_idx" ON "supplier_prices" USING btree ("line_item_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "supplier_prices_supplier_id_idx" ON "supplier_prices" USING btree ("supplier_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "approval_requests_tender_id_idx" ON "approval_requests" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "approval_requests_requested_by_idx" ON "approval_requests" USING btree ("requested_by");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "approval_requests_decided_by_idx" ON "approval_requests" USING btree ("decided_by");--> statement-breakpoint

@@ -2,6 +2,9 @@
 // Every API contract lives here as a Zod schema so client and server cannot drift.
 import { z } from 'zod';
 
+// Phase 5a pricing: the pure/deterministic pricing engine + pricing DTOs.
+export * from './pricing';
+
 export const HealthDto = z.object({
   status: z.literal('ok'),
   service: z.string(),
