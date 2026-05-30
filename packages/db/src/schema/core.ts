@@ -10,6 +10,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { organizations } from './org';
 import {
   documentTypeEnum,
   ocrStatusEnum,
@@ -22,6 +23,10 @@ export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Tenant boundary. NOT NULL: every user belongs to exactly one organization.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
     role: userRoleEnum('role').notNull().default('PIC'),
     name: text('name').notNull(),
     email: text('email').notNull(),
@@ -30,35 +35,62 @@ export const users = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex('users_email_uq').on(t.email)],
+  (t) => [
+    uniqueIndex('users_email_uq').on(t.email),
+    index('users_organization_id_idx').on(t.organizationId),
+  ],
 );
 
-export const customers = pgTable('customers', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  contact: text('contact'),
-  niches: text('niches').array().notNull().default([]),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const customers = pgTable(
+  'customers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Tenant boundary. Child tables that reference a customer inherit tenancy
+    // from it and do NOT carry their own organizationId.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    name: text('name').notNull(),
+    contact: text('contact'),
+    niches: text('niches').array().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('customers_organization_id_idx').on(t.organizationId)],
+);
 
-export const suppliers = pgTable('suppliers', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  niches: text('niches').array().notNull().default([]),
-  capabilities: text('capabilities').array().notNull().default([]),
-  fitScore: numeric('fit_score'),
-  contact: text('contact'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const suppliers = pgTable(
+  'suppliers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // Tenant boundary. supplier_prices reference a supplier and inherit tenancy
+    // from it; they do NOT carry their own organizationId.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    name: text('name').notNull(),
+    niches: text('niches').array().notNull().default([]),
+    capabilities: text('capabilities').array().notNull().default([]),
+    fitScore: numeric('fit_score'),
+    contact: text('contact'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('suppliers_organization_id_idx').on(t.organizationId)],
+);
 
 export const tenders = pgTable(
   'tenders',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Tenant boundary. Most child entities (documents, line_items, pricings,
+    // approval_requests, compliance_checks, …) reference a tender and inherit
+    // tenancy from it rather than carrying their own organizationId.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
     externalId: text('external_id').notNull(),
     source: text('source').notNull(),
     title: text('title').notNull(),
@@ -87,9 +119,12 @@ export const tenders = pgTable(
   (t) => [
     uniqueIndex('tenders_source_external_id_uq').on(t.source, t.externalId),
     index('tenders_customer_id_idx').on(t.customerId),
+    index('tenders_organization_id_idx').on(t.organizationId),
   ],
 );
 
+// Tenancy is inherited via the parent tender (documents.tenderId); no own
+// organizationId column.
 export const documents = pgTable(
   'documents',
   {
@@ -120,6 +155,8 @@ export const documents = pgTable(
   ],
 );
 
+// Tenancy is inherited via the parent tender (amendments.tenderId); no own
+// organizationId column.
 export const amendments = pgTable(
   'amendments',
   {
@@ -136,6 +173,8 @@ export const amendments = pgTable(
   (t) => [index('amendments_tender_id_idx').on(t.tenderId)],
 );
 
+// Tenancy is inherited via the parent tender (assignments.tenderId); no own
+// organizationId column.
 export const assignments = pgTable(
   'assignments',
   {

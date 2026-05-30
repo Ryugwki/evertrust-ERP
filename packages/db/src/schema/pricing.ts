@@ -14,6 +14,8 @@ import {
   supplierPriceSourceEnum,
 } from './enums';
 
+// Tenancy is inherited via the parent tender (lineItems.tenderId); no own
+// organizationId column.
 export const lineItems = pgTable(
   'line_items',
   {
@@ -42,6 +44,8 @@ export const lineItems = pgTable(
   ],
 );
 
+// Tenancy is inherited via the parent line item / supplier (supplierPrices
+// references both); no own organizationId column.
 export const supplierPrices = pgTable(
   'supplier_prices',
   {
@@ -68,6 +72,8 @@ export const supplierPrices = pgTable(
   ],
 );
 
+// Tenancy is inherited via the parent tender (pricings.tenderId); no own
+// organizationId column.
 export const pricings = pgTable(
   'pricings',
   {

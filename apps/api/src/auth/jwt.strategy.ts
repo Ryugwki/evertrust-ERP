@@ -25,9 +25,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  // Return value is attached to req.user. We trust the signed claims (sub, role)
-  // rather than re-hitting the DB on every request.
+  // Return value is attached to req.user. We trust the signed claims (sub, role,
+  // org) rather than re-hitting the DB on every request.
   validate(payload: JwtPayload): AuthUser {
-    return { id: payload.sub, role: payload.role };
+    return {
+      id: payload.sub,
+      role: payload.role,
+      organizationId: payload.org,
+    };
   }
 }

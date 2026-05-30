@@ -8,7 +8,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { RolesGuard } from './auth/guards/roles.guard';
+import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { AuditInterceptor } from './common/audit.interceptor';
 
 @Module({
@@ -25,8 +25,10 @@ import { AuditInterceptor } from './common/audit.interceptor';
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     // Global auth. ORDER MATTERS: authenticate first (populate req.user)...
     { provide: APP_GUARD, useClass: JwtAuthGuard },
-    // ...then authorize by role.
-    { provide: APP_GUARD, useClass: RolesGuard },
+    // ...then authorize by permission. PermissionsGuard is the single RBAC
+    // authority: it expands the role -> permissions and enforces
+    // @RequirePermissions(...).
+    { provide: APP_GUARD, useClass: PermissionsGuard },
     // Audit successful mutations (Workflow -> API -> DB -> Audit).
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],

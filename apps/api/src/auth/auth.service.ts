@@ -24,6 +24,7 @@ export class AuthService {
         email: schema.users.email,
         name: schema.users.name,
         role: schema.users.role,
+        organizationId: schema.users.organizationId,
         active: schema.users.active,
         passwordHash: schema.authCredentials.passwordHash,
       })
@@ -46,8 +47,13 @@ export class AuthService {
       email: row.email,
       name: row.name,
       role: row.role,
+      organizationId: row.organizationId,
     };
-    const payload: JwtPayload = { sub: user.id, role: user.role };
+    const payload: JwtPayload = {
+      sub: user.id,
+      role: user.role,
+      org: user.organizationId,
+    };
     const accessToken = await this.jwt.signAsync(payload);
 
     return { accessToken, user };
@@ -62,6 +68,7 @@ export class AuthService {
         email: schema.users.email,
         name: schema.users.name,
         role: schema.users.role,
+        organizationId: schema.users.organizationId,
       })
       .from(schema.users)
       .where(eq(schema.users.id, userId))

@@ -1,9 +1,11 @@
 import 'dotenv/config';
 import argon2 from 'argon2';
+import { eq } from 'drizzle-orm';
 import { db } from './client';
 import {
   authCredentials,
   customers,
+  organizations,
   suppliers,
   tenders,
   users,
@@ -15,11 +17,40 @@ const DEV_PASSWORD = 'Password123!';
 // Minimal sample data for local/dev bootstrap. Run with `pnpm db:seed`.
 // Safe to compile without a database; only inserts when executed.
 async function seed(): Promise<void> {
+  // Idempotent: if the bootstrap org already exists, this is a no-op, so the
+  // migrate/seed one-shot can be safely re-run (e.g. on `docker compose up`).
+  const existing = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.slug, 'evertrust'))
+    .limit(1);
+  if (existing.length > 0) {
+    console.log('Seed: organization already present, skipping.');
+    return;
+  }
+
+  // Single-tenant bootstrap: every seeded row is scoped to this organization.
+  const [org] = await db
+    .insert(organizations)
+    .values({ name: 'Evertrust GmbH', slug: 'evertrust' })
+    .returning();
+  if (!org) throw new Error('Failed to seed organization');
+
   const [admin, pic] = await db
     .insert(users)
     .values([
-      { name: 'Ada Admin', email: 'admin@evertrust-germany.de', role: 'ADMIN' },
-      { name: 'Pia PIC', email: 'pic@evertrust-germany.de', role: 'PIC' },
+      {
+        name: 'Ada Admin',
+        email: 'admin@evertrust-germany.de',
+        role: 'ADMIN',
+        organizationId: org.id,
+      },
+      {
+        name: 'Pia PIC',
+        email: 'pic@evertrust-germany.de',
+        role: 'PIC',
+        organizationId: org.id,
+      },
     ])
     .returning();
 
@@ -37,6 +68,7 @@ async function seed(): Promise<void> {
       name: 'Stadtwerke Musterstadt',
       contact: 'einkauf@musterstadt.de',
       niches: ['water', 'energy'],
+      organizationId: org.id,
     })
     .returning();
 
@@ -47,6 +79,7 @@ async function seed(): Promise<void> {
       capabilities: ['valves', 'pipes'],
       fitScore: '0.84',
       contact: 'sales@rohrventil.de',
+      organizationId: org.id,
     },
     {
       name: 'ElektroTech AG',
@@ -54,6 +87,7 @@ async function seed(): Promise<void> {
       capabilities: ['cabling', 'transformers'],
       fitScore: '0.71',
       contact: 'vertrieb@elektrotech.de',
+      organizationId: org.id,
     },
   ]);
 
@@ -70,6 +104,7 @@ async function seed(): Promise<void> {
       estimatedValue: '450000.00',
       isAboveThreshold: true,
       location: 'Musterstadt',
+      organizationId: org.id,
     },
     {
       externalId: 'DE-2026-000456',
@@ -82,6 +117,7 @@ async function seed(): Promise<void> {
       estimatedValue: '85000.00',
       isAboveThreshold: false,
       location: 'Beispielstadt',
+      organizationId: org.id,
     },
   ]);
 

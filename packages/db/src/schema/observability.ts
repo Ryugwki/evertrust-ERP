@@ -12,6 +12,7 @@ import {
   vector,
 } from 'drizzle-orm/pg-core';
 import { tenders, users } from './core';
+import { organizations } from './org';
 import { auditActorTypeEnum } from './enums';
 
 // APPEND-ONLY by convention: rows in audit_log are never UPDATEd or DELETEd.
@@ -21,6 +22,10 @@ export const auditLog = pgTable(
   'audit_log',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Tenant boundary. Audit rows are scoped to the acting user's organization.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
     entity: text('entity').notNull(),
     entityId: uuid('entity_id').notNull(),
     action: text('action').notNull(),
@@ -34,6 +39,7 @@ export const auditLog = pgTable(
   (t) => [
     index('audit_log_actor_id_idx').on(t.actorId),
     index('audit_log_entity_idx').on(t.entity, t.entityId),
+    index('audit_log_organization_id_idx').on(t.organizationId),
   ],
 );
 
@@ -41,6 +47,10 @@ export const workflowExecutions = pgTable(
   'workflow_executions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Tenant boundary. A workflow run belongs to one organization.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
     n8nExecutionId: text('n8n_execution_id').notNull(),
     workflowName: text('workflow_name').notNull(),
     source: text('source').notNull(),
@@ -58,6 +68,7 @@ export const workflowExecutions = pgTable(
       t.n8nExecutionId,
     ),
     index('workflow_executions_tender_id_idx').on(t.tenderId),
+    index('workflow_executions_organization_id_idx').on(t.organizationId),
   ],
 );
 
@@ -65,6 +76,10 @@ export const aiRuns = pgTable(
   'ai_runs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // Tenant boundary. An AI run belongs to one organization.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
     tenderId: uuid('tender_id').references(() => tenders.id),
     taskType: text('task_type').notNull(),
     model: text('model').notNull(),
@@ -75,11 +90,16 @@ export const aiRuns = pgTable(
     escalated: boolean('escalated').notNull().default(false),
     at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('ai_runs_tender_id_idx').on(t.tenderId)],
+  (t) => [
+    index('ai_runs_tender_id_idx').on(t.tenderId),
+    index('ai_runs_organization_id_idx').on(t.organizationId),
+  ],
 );
 
 // Polymorphic association via (refType, refId) — intentionally NO FK so any
 // entity type can be embedded. Requires the pgvector extension.
+// Tenancy is inherited via the referenced entity (refType/refId); embeddings do
+// NOT carry their own organizationId.
 // NOTE: vector dimension 1536 is a PLACEHOLDER; the embedding model and final
 // dimension are finalized at milestone M5.
 export const embeddings = pgTable(

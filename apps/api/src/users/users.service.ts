@@ -34,6 +34,7 @@ export class UsersService {
         email: schema.users.email,
         name: schema.users.name,
         role: schema.users.role,
+        organizationId: schema.users.organizationId,
       });
 
     const after = updated[0];

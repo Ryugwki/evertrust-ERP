@@ -14,6 +14,8 @@ import {
   tenderRegimeEnum,
 } from './enums';
 
+// Tenancy is inherited via the parent tender (approvalRequests.tenderId); no own
+// organizationId column.
 export const approvalRequests = pgTable(
   'approval_requests',
   {
@@ -38,6 +40,8 @@ export const approvalRequests = pgTable(
   ],
 );
 
+// Tenancy is inherited via the parent tender (complianceChecks.tenderId); no own
+// organizationId column.
 export const complianceChecks = pgTable(
   'compliance_checks',
   {
@@ -61,6 +65,8 @@ export const complianceChecks = pgTable(
   ],
 );
 
+// Tenancy is inherited via the parent tender (docPackages.tenderId); no own
+// organizationId column.
 export const docPackages = pgTable(
   'doc_packages',
   {
@@ -78,6 +84,8 @@ export const docPackages = pgTable(
   (t) => [index('doc_packages_tender_id_idx').on(t.tenderId)],
 );
 
+// Tenancy is inherited via the parent tender (submissionReceipts.tenderId); no
+// own organizationId column.
 export const submissionReceipts = pgTable(
   'submission_receipts',
   {

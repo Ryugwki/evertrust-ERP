@@ -1,11 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 
-// Demonstrates RBAC: the global RolesGuard blocks any non-ADMIN principal from
-// this route with a 403, while ADMIN passes through.
+// Demonstrates permission-based RBAC: the global PermissionsGuard blocks any
+// principal whose role lacks `admin:config` (only ADMIN holds it) with a 403,
+// while an ADMIN passes through.
 @Controller('admin')
 export class AdminController {
-  @Roles('ADMIN')
+  @RequirePermissions('admin:config')
   @Get('ping')
   ping(): { pong: true } {
     return { pong: true };

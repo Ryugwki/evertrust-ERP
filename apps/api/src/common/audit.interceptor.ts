@@ -68,13 +68,26 @@ export class AuditInterceptor implements NestInterceptor {
       return;
     }
 
+    // audit_log.organization_id is also `uuid NOT NULL` — it is the tenant the
+    // mutation happened in, taken from the authenticated principal. A mutating
+    // request with no org principal (should not happen behind JwtAuthGuard) can't
+    // satisfy the column, so SKIP + log loudly rather than crash with a DB error.
+    if (!user?.organizationId) {
+      this.logger.debug(
+        { entity, action, correlationId, actorId: user?.id ?? null },
+        'audit skipped: no organizationId on principal for mutating request',
+      );
+      return;
+    }
+
     try {
       await this.db.insert(schema.auditLog).values({
+        organizationId: user.organizationId,
         entity,
         entityId,
         action,
         actorType: 'USER',
-        actorId: user?.id ?? null,
+        actorId: user.id,
         before: (ctx?.before ?? null) as never,
         after: (ctx?.after ?? null) as never,
         correlationId,

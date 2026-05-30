@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { AUTH_COOKIE } from '@/lib/env';
 
-// Route prefixes that require an authenticated session. Add future ERP modules here.
+// Route prefixes that require an authenticated session. Add future ERP modules
+// here. Everything NOT matched is public — notably `/` (the marketing landing)
+// and `/login`. There is intentionally no `/` -> `/dashboard` redirect: the
+// landing page is public for everyone, signed in or not.
 const PROTECTED_PREFIXES = ['/dashboard'];
 
 export function middleware(request: NextRequest): NextResponse {
@@ -22,13 +25,10 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(url);
   }
 
-  // Already signed in but sitting on /login -> send to the dashboard.
-  if (pathname === '/login' && hasSession) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
-    url.search = '';
-    return NextResponse.redirect(url);
-  }
+  // NOTE: intentionally NO `/login -> /dashboard` bounce on cookie presence. The
+  // edge can't verify the JWT, so a stale/invalid cookie would ping-pong between
+  // /login and /dashboard forever. /login always renders; a successful login
+  // overwrites the cookie, and /dashboard stays protected by the check above.
 
   return NextResponse.next();
 }
