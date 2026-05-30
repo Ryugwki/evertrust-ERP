@@ -117,7 +117,14 @@ export const tenders = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex('tenders_source_external_id_uq').on(t.source, t.externalId),
+    // UNIQUE per tenant, not globally: two organizations may legitimately track
+    // the same public tender (same source+external_id), so the dedup key is
+    // scoped by organization_id.
+    uniqueIndex('tenders_organization_id_source_external_id_uq').on(
+      t.organizationId,
+      t.source,
+      t.externalId,
+    ),
     index('tenders_customer_id_idx').on(t.customerId),
     index('tenders_organization_id_idx').on(t.organizationId),
   ],

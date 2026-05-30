@@ -25,6 +25,7 @@ export class AuthService {
         name: schema.users.name,
         role: schema.users.role,
         organizationId: schema.users.organizationId,
+        organizationName: schema.organizations.name,
         active: schema.users.active,
         passwordHash: schema.authCredentials.passwordHash,
       })
@@ -32,6 +33,10 @@ export class AuthService {
       .innerJoin(
         schema.authCredentials,
         eq(schema.authCredentials.userId, schema.users.id),
+      )
+      .innerJoin(
+        schema.organizations,
+        eq(schema.organizations.id, schema.users.organizationId),
       )
       .where(eq(schema.users.email, dto.email))
       .limit(1);
@@ -48,6 +53,7 @@ export class AuthService {
       name: row.name,
       role: row.role,
       organizationId: row.organizationId,
+      organizationName: row.organizationName,
     };
     const payload: JwtPayload = {
       sub: user.id,
@@ -69,8 +75,13 @@ export class AuthService {
         name: schema.users.name,
         role: schema.users.role,
         organizationId: schema.users.organizationId,
+        organizationName: schema.organizations.name,
       })
       .from(schema.users)
+      .innerJoin(
+        schema.organizations,
+        eq(schema.organizations.id, schema.users.organizationId),
+      )
       .where(eq(schema.users.id, userId))
       .limit(1);
 

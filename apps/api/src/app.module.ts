@@ -7,6 +7,9 @@ import { DbModule } from './db/db.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { TendersModule } from './tenders/tenders.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { CustomersModule } from './customers/customers.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { AuditInterceptor } from './common/audit.interceptor';
@@ -19,6 +22,9 @@ import { AuditInterceptor } from './common/audit.interceptor';
     HealthModule,
     AuthModule,
     UsersModule,
+    TendersModule,
+    SuppliersModule,
+    CustomersModule,
   ],
   providers: [
     // Zod DTOs are the contract: validate every request body/param/query.

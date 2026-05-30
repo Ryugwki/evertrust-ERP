@@ -123,6 +123,10 @@ export const MeDto = z.object({
   name: z.string(),
   role: UserRole,
   organizationId: z.string().uuid(),
+  // OPTIONAL on purpose: the human-readable org name is added by the M1 /auth/me
+  // join. Keeping it optional means the currently-deployed api/web (which does
+  // not yet send/expect it) keep validating before the coordinated redeploy.
+  organizationName: z.string().optional(),
 });
 export type MeDto = z.infer<typeof MeDto>;
 
@@ -136,3 +140,170 @@ export const UpdateMyNameDto = z.object({
   name: z.string().min(1).max(200),
 });
 export type UpdateMyNameDto = z.infer<typeof UpdateMyNameDto>;
+
+// ============================================================================
+// ERP CORE (M1): tenders + supplier/customer registries
+// All read DTOs mirror the @evertrust/db rows AS THEY ARRIVE OVER HTTP:
+//   numeric  -> string (postgres-js keeps numeric precision as a string)
+//   timestamp-> ISO string (Date is JSON-serialized to an ISO string)
+//   uuid     -> string
+// nullable DB columns are .nullable() here so the read shape can't drift.
+// ============================================================================
+
+// ---- Tenders ----
+
+// Mirrors the tender_status pgEnum (@evertrust/db). The lifecycle is governed by
+// the STATE_MACHINE in the API; this enum is just the set of valid states.
+export const TenderStatus = z.enum([
+  'DETECTED',
+  'QUALIFIED',
+  'OPEN',
+  'PRICING',
+  'APPROVAL',
+  'SUBMITTED',
+  'WON',
+  'LOST',
+]);
+export type TenderStatus = z.infer<typeof TenderStatus>;
+
+// ---- Tender state machine (single source of truth) ----
+// The tender lifecycle as an explicit adjacency map: status -> the statuses it
+// may legally transition to. Lives here so the API (enforcement) and the web UI
+// (which next-states to offer) read the EXACT same authority instead of
+// re-deriving the rules. Terminal states (WON, LOST) have no outgoing
+// transitions. Every non-terminal state can drop to LOST.
+export const STATE_MACHINE: Record<TenderStatus, readonly TenderStatus[]> = {
+  DETECTED: ['QUALIFIED', 'LOST'],
+  QUALIFIED: ['OPEN', 'LOST'],
+  OPEN: ['PRICING', 'LOST'],
+  PRICING: ['APPROVAL', 'LOST'],
+  APPROVAL: ['SUBMITTED', 'LOST'],
+  SUBMITTED: ['WON', 'LOST'],
+  WON: [],
+  LOST: [],
+};
+
+// True iff `to` is a legal next state from `from` per STATE_MACHINE.
+export function canTransition(from: TenderStatus, to: TenderStatus): boolean {
+  return STATE_MACHINE[from].includes(to);
+}
+
+// The legal next states from `status` (a fresh array so callers can't mutate the
+// shared map). Empty for terminal states. The web UI uses this to render exactly
+// the transition affordances the API will accept.
+export function nextStates(status: TenderStatus): TenderStatus[] {
+  return [...STATE_MACHINE[status]];
+}
+
+// Mirrors the tender_regime pgEnum.
+export const TenderRegime = z.enum(['VOB_A', 'VgV', 'UVgO']);
+export type TenderRegime = z.infer<typeof TenderRegime>;
+
+// Full read shape of a tender row (the API GET responses).
+export const TenderDto = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  externalId: z.string(),
+  source: z.string(),
+  title: z.string(),
+  buyer: z.string().nullable(),
+  customerId: z.string().uuid().nullable(),
+  regime: TenderRegime.nullable(),
+  niche: z.string().nullable(),
+  status: TenderStatus,
+  estimatedValue: z.string().nullable(),
+  currency: z.string(),
+  isAboveThreshold: z.boolean(),
+  questionsDeadlineAt: z.string().nullable(),
+  submissionDeadlineAt: z.string().nullable(),
+  location: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type TenderDto = z.infer<typeof TenderDto>;
+
+// Create payload. externalId/source/title are REQUIRED; everything else is
+// optional. status and organizationId are deliberately ABSENT — the server sets
+// status='DETECTED' and organizationId from the authenticated tenant.
+export const CreateTenderDto = z.object({
+  externalId: z.string().min(1),
+  source: z.string().min(1),
+  title: z.string().min(1),
+  buyer: z.string().optional(),
+  customerId: z.string().uuid().optional(),
+  regime: TenderRegime.optional(),
+  niche: z.string().optional(),
+  estimatedValue: z.string().optional(),
+  currency: z.string().length(3).optional(),
+  isAboveThreshold: z.boolean().optional(),
+  questionsDeadlineAt: z.string().datetime().optional(),
+  submissionDeadlineAt: z.string().datetime().optional(),
+  location: z.string().optional(),
+});
+export type CreateTenderDto = z.infer<typeof CreateTenderDto>;
+
+// Partial update of the writable fields. status is NOT writable here — it only
+// changes through POST /tenders/:id/transition. organizationId is never writable.
+export const UpdateTenderDto = CreateTenderDto.partial();
+export type UpdateTenderDto = z.infer<typeof UpdateTenderDto>;
+
+// Body for POST /tenders/:id/transition — the target status. Whether the
+// transition is legal is decided by the server-side STATE_MACHINE.
+export const TransitionTenderDto = z.object({
+  to: TenderStatus,
+});
+export type TransitionTenderDto = z.infer<typeof TransitionTenderDto>;
+
+// Query params for GET /tenders. Optional status filter.
+export const ListTendersQuery = z.object({
+  status: TenderStatus.optional(),
+});
+export type ListTendersQuery = z.infer<typeof ListTendersQuery>;
+
+// ---- Suppliers ----
+
+export const SupplierDto = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  name: z.string(),
+  niches: z.array(z.string()),
+  capabilities: z.array(z.string()),
+  fitScore: z.string().nullable(),
+  contact: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type SupplierDto = z.infer<typeof SupplierDto>;
+
+export const CreateSupplierDto = z.object({
+  name: z.string().min(1),
+  niches: z.array(z.string()).optional(),
+  capabilities: z.array(z.string()).optional(),
+  fitScore: z.string().optional(),
+  contact: z.string().optional(),
+});
+export type CreateSupplierDto = z.infer<typeof CreateSupplierDto>;
+
+export const UpdateSupplierDto = CreateSupplierDto.partial();
+export type UpdateSupplierDto = z.infer<typeof UpdateSupplierDto>;
+
+// ---- Customers ----
+
+export const CustomerDto = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  name: z.string(),
+  contact: z.string().nullable(),
+  niches: z.array(z.string()),
+  createdAt: z.string(),
+});
+export type CustomerDto = z.infer<typeof CustomerDto>;
+
+export const CreateCustomerDto = z.object({
+  name: z.string().min(1),
+  contact: z.string().optional(),
+  niches: z.array(z.string()).optional(),
+});
+export type CreateCustomerDto = z.infer<typeof CreateCustomerDto>;
+
+export const UpdateCustomerDto = CreateCustomerDto.partial();
+export type UpdateCustomerDto = z.infer<typeof UpdateCustomerDto>;

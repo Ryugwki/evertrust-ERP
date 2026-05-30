@@ -47,9 +47,10 @@ export function UserMenu({ user }: { user: MeDto }) {
           </span>
           <span className="mt-1 flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
             <Building2 className="size-3.5 shrink-0" />
-            {/* TODO: MeDto only carries organizationId, not the org name. Surface
-                the real name once GET /auth/me (or an org endpoint) returns it. */}
-            <span className="truncate">Organization</span>
+            {/* Real org name from the M1 /auth/me join. organizationName is
+                optional in MeDto (pre-M1 deployments omit it), so fall back to a
+                neutral label rather than rendering "undefined". */}
+            <span className="truncate">{user.organizationName ?? 'Organization'}</span>
             <Badge variant="secondary" className="ml-auto font-normal">
               {user.role}
             </Badge>
