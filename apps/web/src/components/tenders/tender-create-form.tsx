@@ -42,7 +42,7 @@ import {
 } from './tender-form-utils';
 
 // Create form for a new tender. Validated against CreateTenderDto via
-// zodResolver. externalId/source/title are required; everything else is
+// zodResolver. vergabeId/source/title are required; everything else is
 // optional. On success we route to the new tender's detail page.
 export function TenderCreateForm() {
   const router = useRouter();
@@ -52,7 +52,7 @@ export function TenderCreateForm() {
   const form = useForm<TenderFormValues>({
     resolver: zodResolver(CreateTenderDto),
     defaultValues: {
-      externalId: '',
+      vergabeId: '',
       source: '',
       title: '',
       buyer: '',
@@ -84,8 +84,9 @@ export function TenderCreateForm() {
       <CardHeader>
         <CardTitle>New tender</CardTitle>
         <CardDescription>
-          Register a tender. It starts in <code className="font-mono">DETECTED</code>;
-          move it through the lifecycle from its detail page.
+          Register a tender. It starts in{' '}
+          <code className="font-mono">NOT_STARTED</code>; move it through the
+          lifecycle from its detail page.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -110,10 +111,10 @@ export function TenderCreateForm() {
 
             <FormField
               control={form.control}
-              name="externalId"
+              name="vergabeId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>External ID</FormLabel>
+                  <FormLabel>Vergabe-ID</FormLabel>
                   <FormControl>
                     <Input placeholder="Portal reference" {...field} />
                   </FormControl>

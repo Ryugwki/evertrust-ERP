@@ -1,17 +1,24 @@
--- pgvector extension is required by the embeddings.vector column and its HNSW index.
--- drizzle-kit does not emit this automatically, so it is prepended manually.
-CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
+CREATE EXTENSION IF NOT EXISTS vector;
+--> statement-breakpoint
 CREATE TYPE "public"."approval_status" AS ENUM('PENDING', 'APPROVED', 'REJECTED');--> statement-breakpoint
 CREATE TYPE "public"."approval_type" AS ENUM('PRICING', 'CUSTOMER', 'QC');--> statement-breakpoint
 CREATE TYPE "public"."audit_actor_type" AS ENUM('USER', 'SYSTEM', 'N8N', 'DEEPSEEK', 'CLAUDE');--> statement-breakpoint
 CREATE TYPE "public"."document_type" AS ENUM('TYPE1', 'TYPE2');--> statement-breakpoint
+CREATE TYPE "public"."lane" AS ENUM('OPERATIONS', 'MARKETING', 'HR');--> statement-breakpoint
 CREATE TYPE "public"."ocr_status" AS ENUM('PENDING', 'DONE', 'FAILED');--> statement-breakpoint
 CREATE TYPE "public"."pricing_status" AS ENUM('DRAFT', 'REVIEW', 'FINAL');--> statement-breakpoint
 CREATE TYPE "public"."ryg_flag" AS ENUM('RED', 'YELLOW', 'GREEN');--> statement-breakpoint
 CREATE TYPE "public"."supplier_price_source" AS ENUM('QUOTE', 'ERP', 'OLD_TENDER', 'EXCEL', 'CATALOG', 'EMAIL');--> statement-breakpoint
 CREATE TYPE "public"."tender_regime" AS ENUM('VOB_A', 'VgV', 'UVgO');--> statement-breakpoint
-CREATE TYPE "public"."tender_status" AS ENUM('DETECTED', 'QUALIFIED', 'OPEN', 'PRICING', 'APPROVAL', 'SUBMITTED', 'WON', 'LOST');--> statement-breakpoint
-CREATE TYPE "public"."user_role" AS ENUM('PIC', 'PRICING', 'MANAGEMENT', 'ADMIN');--> statement-breakpoint
+CREATE TYPE "public"."tender_status" AS ENUM('NOT_STARTED', 'PIC_PRICING', 'CUSTOMER_PRICING', 'DOCUMENTS', 'SUBMITTED', 'AWARDED', 'LOST');--> statement-breakpoint
+CREATE TYPE "public"."user_role" AS ENUM('L1', 'L2', 'L3', 'L4', 'L5');--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "organizations" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" text NOT NULL,
+	"slug" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "amendments" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tender_id" uuid NOT NULL,
@@ -32,6 +39,7 @@ CREATE TABLE IF NOT EXISTS "assignments" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "customers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" uuid NOT NULL,
 	"name" text NOT NULL,
 	"contact" text,
 	"niches" text[] DEFAULT '{}' NOT NULL,
@@ -55,6 +63,7 @@ CREATE TABLE IF NOT EXISTS "documents" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "suppliers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" uuid NOT NULL,
 	"name" text NOT NULL,
 	"niches" text[] DEFAULT '{}' NOT NULL,
 	"capabilities" text[] DEFAULT '{}' NOT NULL,
@@ -65,14 +74,15 @@ CREATE TABLE IF NOT EXISTS "suppliers" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "tenders" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"external_id" text NOT NULL,
+	"organization_id" uuid NOT NULL,
+	"vergabe_id" text NOT NULL,
 	"source" text NOT NULL,
 	"title" text NOT NULL,
 	"buyer" text,
 	"customer_id" uuid,
 	"regime" "tender_regime",
 	"niche" text,
-	"status" "tender_status" DEFAULT 'DETECTED' NOT NULL,
+	"status" "tender_status" DEFAULT 'NOT_STARTED' NOT NULL,
 	"estimated_value" numeric,
 	"currency" varchar(3) DEFAULT 'EUR' NOT NULL,
 	"is_above_threshold" boolean DEFAULT false NOT NULL,
@@ -85,11 +95,20 @@ CREATE TABLE IF NOT EXISTS "tenders" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"role" "user_role" DEFAULT 'PIC' NOT NULL,
+	"organization_id" uuid NOT NULL,
+	"role" "user_role" DEFAULT 'L5' NOT NULL,
+	"lane" "lane" DEFAULT 'OPERATIONS' NOT NULL,
 	"name" text NOT NULL,
 	"email" text NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "auth_credentials" (
+	"user_id" uuid PRIMARY KEY NOT NULL,
+	"password_hash" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "line_items" (
@@ -178,6 +197,7 @@ CREATE TABLE IF NOT EXISTS "submission_receipts" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "ai_runs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" uuid NOT NULL,
 	"tender_id" uuid,
 	"task_type" text NOT NULL,
 	"model" text NOT NULL,
@@ -191,6 +211,7 @@ CREATE TABLE IF NOT EXISTS "ai_runs" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "audit_log" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" uuid NOT NULL,
 	"entity" text NOT NULL,
 	"entity_id" uuid NOT NULL,
 	"action" text NOT NULL,
@@ -215,6 +236,7 @@ CREATE TABLE IF NOT EXISTS "embeddings" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "workflow_executions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" uuid NOT NULL,
 	"n8n_execution_id" text NOT NULL,
 	"workflow_name" text NOT NULL,
 	"source" text NOT NULL,
@@ -247,6 +269,12 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "customers" ADD CONSTRAINT "customers_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "documents" ADD CONSTRAINT "documents_tender_id_tenders_id_fk" FOREIGN KEY ("tender_id") REFERENCES "public"."tenders"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -265,7 +293,31 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "suppliers" ADD CONSTRAINT "suppliers_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "tenders" ADD CONSTRAINT "tenders_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "tenders" ADD CONSTRAINT "tenders_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "users" ADD CONSTRAINT "users_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "auth_credentials" ADD CONSTRAINT "auth_credentials_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -361,7 +413,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "ai_runs" ADD CONSTRAINT "ai_runs_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "ai_runs" ADD CONSTRAINT "ai_runs_tender_id_tenders_id_fk" FOREIGN KEY ("tender_id") REFERENCES "public"."tenders"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -373,20 +437,31 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_tender_id_tenders_id_fk" FOREIGN KEY ("tender_id") REFERENCES "public"."tenders"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "organizations_slug_uq" ON "organizations" USING btree ("slug");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "amendments_tender_id_idx" ON "amendments" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "assignments_tender_id_idx" ON "assignments" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "assignments_pic_id_idx" ON "assignments" USING btree ("pic_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "customers_organization_id_idx" ON "customers" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "documents_tender_id_idx" ON "documents" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "documents_source_parent_doc_id_idx" ON "documents" USING btree ("source_parent_doc_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "documents_uploaded_by_idx" ON "documents" USING btree ("uploaded_by");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "tenders_source_external_id_uq" ON "tenders" USING btree ("source","external_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "suppliers_organization_id_idx" ON "suppliers" USING btree ("organization_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "tenders_organization_id_source_vergabe_id_uq" ON "tenders" USING btree ("organization_id","source","vergabe_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "tenders_customer_id_idx" ON "tenders" USING btree ("customer_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tenders_organization_id_idx" ON "tenders" USING btree ("organization_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "users_email_uq" ON "users" USING btree ("email");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_organization_id_idx" ON "users" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "line_items_tender_id_idx" ON "line_items" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "line_items_source_doc_id_idx" ON "line_items" USING btree ("source_doc_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "line_items_parent_id_idx" ON "line_items" USING btree ("parent_id");--> statement-breakpoint
@@ -403,9 +478,12 @@ CREATE INDEX IF NOT EXISTS "doc_packages_tender_id_idx" ON "doc_packages" USING 
 CREATE INDEX IF NOT EXISTS "submission_receipts_tender_id_idx" ON "submission_receipts" USING btree ("tender_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "submission_receipts_submitted_by_idx" ON "submission_receipts" USING btree ("submitted_by");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "ai_runs_tender_id_idx" ON "ai_runs" USING btree ("tender_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "ai_runs_organization_id_idx" ON "ai_runs" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "audit_log_actor_id_idx" ON "audit_log" USING btree ("actor_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "audit_log_entity_idx" ON "audit_log" USING btree ("entity","entity_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "audit_log_organization_id_idx" ON "audit_log" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "embeddings_ref_idx" ON "embeddings" USING btree ("ref_type","ref_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "embeddings_vector_hnsw_idx" ON "embeddings" USING hnsw ("vector" vector_cosine_ops);--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "workflow_executions_n8n_execution_id_uq" ON "workflow_executions" USING btree ("n8n_execution_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "workflow_executions_tender_id_idx" ON "workflow_executions" USING btree ("tender_id");
+CREATE INDEX IF NOT EXISTS "workflow_executions_tender_id_idx" ON "workflow_executions" USING btree ("tender_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "workflow_executions_organization_id_idx" ON "workflow_executions" USING btree ("organization_id");

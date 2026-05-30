@@ -52,7 +52,8 @@ export function UserMenu({ user }: { user: MeDto }) {
                 neutral label rather than rendering "undefined". */}
             <span className="truncate">{user.organizationName ?? 'Organization'}</span>
             <Badge variant="secondary" className="ml-auto font-normal">
-              {user.role}
+              {/* role tier + lane where available, e.g. "L5 · OPERATIONS" */}
+              {user.lane ? `${user.role} · ${user.lane}` : user.role}
             </Badge>
           </span>
         </DropdownMenuLabel>

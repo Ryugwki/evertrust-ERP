@@ -1,2 +1,0 @@
-DROP INDEX IF EXISTS "tenders_source_external_id_uq";--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "tenders_organization_id_source_external_id_uq" ON "tenders" USING btree ("organization_id","source","external_id");

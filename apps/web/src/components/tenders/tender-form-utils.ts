@@ -13,7 +13,7 @@ export const NONE = '__none__';
 // Plain optional strings (buyer, niche, estimatedValue, location, currency) may be
 // '' transiently; cleanTenderPayload trims them away before submit.
 export type TenderFormValues = {
-  externalId: string;
+  vergabeId: string;
   source: string;
   title: string;
   buyer: string;
@@ -63,7 +63,7 @@ export function isoToLocalInput(value: string | undefined): string {
 // valid-or-undefined values. The result satisfies CreateTenderDto.
 export function cleanTenderPayload(values: TenderFormValues): CreateTenderDto {
   return {
-    externalId: values.externalId.trim(),
+    vergabeId: values.vergabeId.trim(),
     source: values.source.trim(),
     title: values.title.trim(),
     buyer: opt(values.buyer),

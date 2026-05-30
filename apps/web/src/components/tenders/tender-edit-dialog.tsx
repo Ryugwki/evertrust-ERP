@@ -50,7 +50,7 @@ import {
 // Map a tender row to the form's value shape (nulls -> '' / undefined).
 function toFormValues(tender: TenderDto): TenderFormValues {
   return {
-    externalId: tender.externalId,
+    vergabeId: tender.vergabeId,
     source: tender.source,
     title: tender.title,
     buyer: tender.buyer ?? '',
@@ -124,10 +124,10 @@ export function TenderEditDialog({ tender }: { tender: TenderDto }) {
             />
             <FormField
               control={form.control}
-              name="externalId"
+              name="vergabeId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>External ID</FormLabel>
+                  <FormLabel>Vergabe-ID</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>

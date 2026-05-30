@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1780137622524,
-      "tag": "0000_equal_excalibur",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1780138419484,
-      "tag": "0001_dark_praxagora",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1780142738528,
-      "tag": "0002_absent_princess_powerful",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1780145675031,
-      "tag": "0003_overjoyed_zaran",
+      "when": 1780150030362,
+      "tag": "0000_chilly_unus",
       "breakpoints": true
     }
   ]

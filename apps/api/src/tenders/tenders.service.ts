@@ -26,7 +26,7 @@ function writableValues(
   dto: CreateTenderDto | UpdateTenderDto,
 ): Partial<typeof schema.tenders.$inferInsert> {
   const v: Partial<typeof schema.tenders.$inferInsert> = {};
-  if (dto.externalId !== undefined) v.externalId = dto.externalId;
+  if (dto.vergabeId !== undefined) v.vergabeId = dto.vergabeId;
   if (dto.source !== undefined) v.source = dto.source;
   if (dto.title !== undefined) v.title = dto.title;
   if (dto.buyer !== undefined) v.buyer = dto.buyer;
@@ -79,15 +79,15 @@ export class TendersService {
   }
 
   // Create a tender in the caller's tenant. Server owns organizationId and the
-  // initial status (DETECTED); the client cannot set either.
+  // initial status (NOT_STARTED); the client cannot set either.
   async create(orgId: string, dto: CreateTenderDto): Promise<TenderRow> {
     const inserted = await this.db
       .insert(schema.tenders)
       .values({
         ...writableValues(dto),
         organizationId: orgId,
-        status: 'DETECTED',
-        externalId: dto.externalId,
+        status: 'NOT_STARTED',
+        vergabeId: dto.vergabeId,
         source: dto.source,
         title: dto.title,
       })

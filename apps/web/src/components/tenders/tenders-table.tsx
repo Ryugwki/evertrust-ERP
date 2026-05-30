@@ -39,7 +39,7 @@ export function TendersTable({ tenders }: { tenders: TenderDto[] }) {
                   {tender.title}
                 </Link>
                 <span className="block truncate text-xs text-muted-foreground">
-                  {tender.externalId} · {tender.source}
+                  {tender.vergabeId} · {tender.source}
                 </span>
               </TableCell>
               <TableCell>

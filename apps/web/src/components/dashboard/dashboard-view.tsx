@@ -55,6 +55,9 @@ export function DashboardView() {
                 <CardTitle className="flex items-center gap-2">
                   Signed in as {user.name}
                   <Badge variant="secondary">{user.role}</Badge>
+                  {user.lane ? (
+                    <Badge variant="outline">{user.lane}</Badge>
+                  ) : null}
                 </CardTitle>
                 <CardDescription>{user.email}</CardDescription>
               </CardHeader>
@@ -65,7 +68,7 @@ export function DashboardView() {
             <UpdateNameForm user={user} />
 
             {/* RBAC demo: this admin-only card renders only when the user's role
-                grants `admin:config` (i.e. ADMIN). The <Can> boundary gates the
+                grants `admin:config` (i.e. L1/L2). The <Can> boundary gates the
                 UI; the API enforces the same permission server-side. */}
             <Can permission="admin:config">
               <Card className="md:col-span-2">
@@ -73,7 +76,7 @@ export function DashboardView() {
                   <CardTitle className="flex items-center gap-2">
                     <ShieldCheck className="size-4 text-amber-500" />
                     Administration
-                    <Badge variant="outline">ADMIN</Badge>
+                    <Badge variant="outline">L1 / L2</Badge>
                   </CardTitle>
                   <CardDescription>
                     Organization configuration and platform settings.

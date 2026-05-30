@@ -4,11 +4,14 @@ import { pgEnum } from 'drizzle-orm/pg-core';
 // model maps to exactly one of these. Enum names are snake_case + `_enum`.
 
 export const userRoleEnum = pgEnum('user_role', [
-  'PIC',
-  'PRICING',
-  'MANAGEMENT',
-  'ADMIN',
+  'L1',
+  'L2',
+  'L3',
+  'L4',
+  'L5',
 ]);
+
+export const laneEnum = pgEnum('lane', ['OPERATIONS', 'MARKETING', 'HR']);
 
 export const tenderRegimeEnum = pgEnum('tender_regime', [
   'VOB_A',
@@ -17,13 +20,12 @@ export const tenderRegimeEnum = pgEnum('tender_regime', [
 ]);
 
 export const tenderStatusEnum = pgEnum('tender_status', [
-  'DETECTED',
-  'QUALIFIED',
-  'OPEN',
-  'PRICING',
-  'APPROVAL',
+  'NOT_STARTED',
+  'PIC_PRICING',
+  'CUSTOMER_PRICING',
+  'DOCUMENTS',
   'SUBMITTED',
-  'WON',
+  'AWARDED',
   'LOST',
 ]);
 

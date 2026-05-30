@@ -13,6 +13,7 @@ import {
 import { organizations } from './org';
 import {
   documentTypeEnum,
+  laneEnum,
   ocrStatusEnum,
   tenderRegimeEnum,
   tenderStatusEnum,
@@ -27,7 +28,9 @@ export const users = pgTable(
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id),
-    role: userRoleEnum('role').notNull().default('PIC'),
+    role: userRoleEnum('role').notNull().default('L5'),
+    // Operational lane the user belongs to (orthogonal to the L1–L5 role tier).
+    lane: laneEnum('lane').notNull().default('OPERATIONS'),
     name: text('name').notNull(),
     email: text('email').notNull(),
     active: boolean('active').notNull().default(true),
@@ -91,14 +94,14 @@ export const tenders = pgTable(
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id),
-    externalId: text('external_id').notNull(),
+    vergabeId: text('vergabe_id').notNull(),
     source: text('source').notNull(),
     title: text('title').notNull(),
     buyer: text('buyer'),
     customerId: uuid('customer_id').references(() => customers.id),
     regime: tenderRegimeEnum('regime'),
     niche: text('niche'),
-    status: tenderStatusEnum('status').notNull().default('DETECTED'),
+    status: tenderStatusEnum('status').notNull().default('NOT_STARTED'),
     estimatedValue: numeric('estimated_value'),
     currency: varchar('currency', { length: 3 }).notNull().default('EUR'),
     isAboveThreshold: boolean('is_above_threshold').notNull().default(false),
@@ -118,12 +121,12 @@ export const tenders = pgTable(
   },
   (t) => [
     // UNIQUE per tenant, not globally: two organizations may legitimately track
-    // the same public tender (same source+external_id), so the dedup key is
+    // the same public tender (same source+vergabe_id), so the dedup key is
     // scoped by organization_id.
-    uniqueIndex('tenders_organization_id_source_external_id_uq').on(
+    uniqueIndex('tenders_organization_id_source_vergabe_id_uq').on(
       t.organizationId,
       t.source,
-      t.externalId,
+      t.vergabeId,
     ),
     index('tenders_customer_id_idx').on(t.customerId),
     index('tenders_organization_id_idx').on(t.organizationId),

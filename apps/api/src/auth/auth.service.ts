@@ -24,6 +24,7 @@ export class AuthService {
         email: schema.users.email,
         name: schema.users.name,
         role: schema.users.role,
+        lane: schema.users.lane,
         organizationId: schema.users.organizationId,
         organizationName: schema.organizations.name,
         active: schema.users.active,
@@ -52,6 +53,7 @@ export class AuthService {
       email: row.email,
       name: row.name,
       role: row.role,
+      lane: row.lane,
       organizationId: row.organizationId,
       organizationName: row.organizationName,
     };
@@ -74,6 +76,7 @@ export class AuthService {
         email: schema.users.email,
         name: schema.users.name,
         role: schema.users.role,
+        lane: schema.users.lane,
         organizationId: schema.users.organizationId,
         organizationName: schema.organizations.name,
       })

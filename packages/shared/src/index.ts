@@ -12,10 +12,17 @@ export const HealthDto = z.object({
 });
 export type HealthDto = z.infer<typeof HealthDto>;
 
-// User role mirrors the `user_role` pgEnum in @evertrust/db. Kept as a literal
-// union here so @evertrust/shared has no dependency on the DB package.
-export const UserRole = z.enum(['PIC', 'PRICING', 'MANAGEMENT', 'ADMIN']);
+// User role mirrors the `user_role` pgEnum in @evertrust/db. The canonical
+// "Combine" tiers L1–L5: L1 Super Admin (CEO), L2 Director/Governance, L3 Lane
+// lead, L4 Niche lead, L5 Member/PIC. Kept as a literal union here so
+// @evertrust/shared has no dependency on the DB package.
+export const UserRole = z.enum(['L1', 'L2', 'L3', 'L4', 'L5']);
 export type UserRole = z.infer<typeof UserRole>;
+
+// Operational lane a user belongs to. Mirrors the `lane` pgEnum in @evertrust/db.
+// Cross-cutting axis to the L1–L5 tier: a user has one role tier AND one lane.
+export const Lane = z.enum(['OPERATIONS', 'MARKETING', 'HR']);
+export type Lane = z.infer<typeof Lane>;
 
 // ---- Permissions (single source of truth for RBAC) ----
 // Roles are coarse identity; permissions are the fine-grained authority the API
@@ -45,18 +52,26 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
-// Authoritative role -> permissions mapping. ADMIN holds every permission; the
-// other roles are explicit allow-lists. Changing access policy means changing
-// this table, nothing else.
+// Authoritative role -> permissions mapping (the L1–L5 "Combine" matrix). L1
+// holds every permission; L2 is L1 minus users:manage; L3/L4/L5 are explicit
+// allow-lists. Changing access policy means changing this table, nothing else.
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  ADMIN: [...PERMISSIONS],
-  MANAGEMENT: [
+  // L1 Super Admin / CEO: every permission.
+  L1: [...PERMISSIONS],
+  // L2 Director / Governance: everything except users:manage.
+  L2: PERMISSIONS.filter((p) => p !== 'users:manage'),
+  // L3 Lane lead.
+  L3: [
     'tenders:read',
+    'tenders:write',
     'tenders:transition',
     'tenders:assign',
     'suppliers:read',
+    'suppliers:write',
     'customers:read',
+    'customers:write',
     'pricing:read',
+    'pricing:write',
     'pricing:approve',
     'approvals:read',
     'approvals:decide',
@@ -64,25 +79,34 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'compliance:review',
     'audit:read',
   ],
-  PIC: [
+  // L4 Niche lead: like L3 but no pricing:approve, no approvals:decide, and
+  // customers read-only.
+  L4: [
     'tenders:read',
     'tenders:write',
     'tenders:transition',
     'tenders:assign',
+    'suppliers:read',
+    'suppliers:write',
+    'customers:read',
+    'pricing:read',
+    'pricing:write',
+    'approvals:read',
+    'compliance:read',
+    'compliance:review',
+    'audit:read',
+  ],
+  // L5 Member / PIC.
+  L5: [
+    'tenders:read',
+    'tenders:write',
+    'tenders:transition',
     'suppliers:read',
     'customers:read',
     'pricing:read',
     'approvals:read',
     'compliance:read',
     'audit:read',
-  ],
-  PRICING: [
-    'tenders:read',
-    'suppliers:read',
-    'suppliers:write',
-    'customers:read',
-    'pricing:read',
-    'pricing:write',
   ],
 };
 
@@ -122,6 +146,9 @@ export const MeDto = z.object({
   email: z.string().email(),
   name: z.string(),
   role: UserRole,
+  // The user's operational lane. OPTIONAL so a pre-lane deployment (which does
+  // not yet send it) keeps validating before the coordinated redeploy.
+  lane: Lane.optional(),
   organizationId: z.string().uuid(),
   // OPTIONAL on purpose: the human-readable org name is added by the M1 /auth/me
   // join. Keeping it optional means the currently-deployed api/web (which does
@@ -152,16 +179,16 @@ export type UpdateMyNameDto = z.infer<typeof UpdateMyNameDto>;
 
 // ---- Tenders ----
 
-// Mirrors the tender_status pgEnum (@evertrust/db). The lifecycle is governed by
-// the STATE_MACHINE in the API; this enum is just the set of valid states.
+// Mirrors the tender_status pgEnum (@evertrust/db). The canonical 7-value
+// "Combine" chain. The lifecycle is governed by the STATE_MACHINE in the API;
+// this enum is just the set of valid states.
 export const TenderStatus = z.enum([
-  'DETECTED',
-  'QUALIFIED',
-  'OPEN',
-  'PRICING',
-  'APPROVAL',
+  'NOT_STARTED',
+  'PIC_PRICING',
+  'CUSTOMER_PRICING',
+  'DOCUMENTS',
   'SUBMITTED',
-  'WON',
+  'AWARDED',
   'LOST',
 ]);
 export type TenderStatus = z.infer<typeof TenderStatus>;
@@ -170,16 +197,16 @@ export type TenderStatus = z.infer<typeof TenderStatus>;
 // The tender lifecycle as an explicit adjacency map: status -> the statuses it
 // may legally transition to. Lives here so the API (enforcement) and the web UI
 // (which next-states to offer) read the EXACT same authority instead of
-// re-deriving the rules. Terminal states (WON, LOST) have no outgoing
-// transitions. Every non-terminal state can drop to LOST.
+// re-deriving the rules. Terminal states (AWARDED, LOST) have no outgoing
+// transitions. Every non-terminal state can drop to LOST. PIC_PRICING may fork
+// to DOCUMENTS directly (Track B documentation running in parallel).
 export const STATE_MACHINE: Record<TenderStatus, readonly TenderStatus[]> = {
-  DETECTED: ['QUALIFIED', 'LOST'],
-  QUALIFIED: ['OPEN', 'LOST'],
-  OPEN: ['PRICING', 'LOST'],
-  PRICING: ['APPROVAL', 'LOST'],
-  APPROVAL: ['SUBMITTED', 'LOST'],
-  SUBMITTED: ['WON', 'LOST'],
-  WON: [],
+  NOT_STARTED: ['PIC_PRICING', 'LOST'],
+  PIC_PRICING: ['CUSTOMER_PRICING', 'DOCUMENTS', 'LOST'],
+  CUSTOMER_PRICING: ['DOCUMENTS', 'LOST'],
+  DOCUMENTS: ['SUBMITTED', 'LOST'],
+  SUBMITTED: ['AWARDED', 'LOST'],
+  AWARDED: [],
   LOST: [],
 };
 
@@ -203,7 +230,8 @@ export type TenderRegime = z.infer<typeof TenderRegime>;
 export const TenderDto = z.object({
   id: z.string().uuid(),
   organizationId: z.string().uuid(),
-  externalId: z.string(),
+  // Portal-issued Vergabe-ID (German procurement reference). No internal numbering.
+  vergabeId: z.string(),
   source: z.string(),
   title: z.string(),
   buyer: z.string().nullable(),
@@ -222,11 +250,11 @@ export const TenderDto = z.object({
 });
 export type TenderDto = z.infer<typeof TenderDto>;
 
-// Create payload. externalId/source/title are REQUIRED; everything else is
+// Create payload. vergabeId/source/title are REQUIRED; everything else is
 // optional. status and organizationId are deliberately ABSENT — the server sets
-// status='DETECTED' and organizationId from the authenticated tenant.
+// status='NOT_STARTED' and organizationId from the authenticated tenant.
 export const CreateTenderDto = z.object({
-  externalId: z.string().min(1),
+  vergabeId: z.string().min(1),
   source: z.string().min(1),
   title: z.string().min(1),
   buyer: z.string().optional(),

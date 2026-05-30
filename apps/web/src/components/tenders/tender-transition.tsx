@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useTransitionTender } from '@/hooks/use-tenders';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
+import { STATUS_LABEL } from '@/lib/tender-format';
 import { StatusBadge } from './status-badge';
 
 // Lifecycle transition control. Offers EXACTLY the legal next states from the
@@ -22,7 +23,7 @@ export function TenderTransition({ tender }: { tender: TenderDto }) {
       { to },
       {
         onSuccess: (updated) =>
-          toast.success(`Moved to ${updated.status}.`),
+          toast.success(`Moved to ${STATUS_LABEL[updated.status]}.`),
         onError: (error) =>
           toast.error(error.message ?? 'Transition failed.'),
       },
@@ -57,7 +58,7 @@ export function TenderTransition({ tender }: { tender: TenderDto }) {
             onClick={() => go(to)}
           >
             <ArrowRight />
-            {to}
+            {STATUS_LABEL[to]}
           </Button>
         ))}
       </div>

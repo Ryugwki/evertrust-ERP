@@ -15,8 +15,8 @@ import type { AuthUser } from '../auth.types';
 // ROLE_PERMISSIONS (@evertrust/shared) and allows the request only if EVERY
 // permission named by @RequirePermissions(...) is present. Routes without the
 // decorator are authenticated-only (no permission restriction). Throws 403 on a
-// missing permission (e.g. a non-ADMIN hitting /admin/ping which needs
-// admin:config).
+// missing permission (e.g. a principal lacking admin:config hitting /admin/ping
+// which needs it — only L1/L2 hold it).
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}

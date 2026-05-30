@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import {
   REGIME_LABEL,
   STATUS_BADGE_CLASS,
+  STATUS_LABEL,
   STATUS_ORDER,
   formatDate,
   formatValue,
@@ -32,7 +33,7 @@ export function TendersBoard({ tenders }: { tenders: TenderDto[] }) {
                   STATUS_BADGE_CLASS[status],
                 )}
               >
-                {status}
+                {STATUS_LABEL[status]}
               </span>
               <span className="text-xs tabular-nums text-muted-foreground">
                 {items.length}

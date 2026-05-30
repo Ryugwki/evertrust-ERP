@@ -73,7 +73,7 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
           <div className="mb-2 flex items-center gap-3">
             <StatusBadge status={tender.status} className="text-sm" />
             <span className="font-mono text-xs text-muted-foreground">
-              {tender.externalId} · {tender.source}
+              {tender.vergabeId} · {tender.source}
             </span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{tender.title}</h1>

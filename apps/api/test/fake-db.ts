@@ -54,7 +54,7 @@ const COLUMN_TO_KEY: Record<string, string> = {
   organization_id: 'organizationId',
   id: 'id',
   status: 'status',
-  external_id: 'externalId',
+  vergabe_id: 'vergabeId',
   source: 'source',
 };
 

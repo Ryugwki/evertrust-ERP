@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { STATUS_ORDER } from '@/lib/tender-format';
+import { STATUS_LABEL, STATUS_ORDER } from '@/lib/tender-format';
 import { TendersTable } from './tenders-table';
 import { TendersBoard } from './tenders-board';
 
@@ -67,7 +67,7 @@ export function TendersView() {
               <SelectItem value={ALL}>All statuses</SelectItem>
               {STATUS_ORDER.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {s}
+                  {STATUS_LABEL[s]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -93,7 +93,7 @@ export function TendersView() {
           </div>
         ) : !data || data.length === 0 ? (
           <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-            No tenders {status ? `in status ${status}` : 'yet'}.
+            No tenders {status ? `in status ${STATUS_LABEL[status]}` : 'yet'}.
           </div>
         ) : (
           <>

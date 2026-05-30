@@ -382,7 +382,7 @@ const FEATURES = [
   {
     icon: ShieldCheck,
     title: 'Role-based access',
-    body: 'PIC, Pricing, Management and Admin roles map to fine-grained permissions, enforced on every request.',
+    body: 'L1–L5 role tiers and operational lanes map to fine-grained permissions, enforced on every request.',
   },
   {
     icon: LineChart,

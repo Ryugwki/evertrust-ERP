@@ -3,30 +3,41 @@ import type { TenderRegime, TenderStatus } from '@evertrust/shared';
 // Presentational helpers for tender data. Pure functions, no React — shared by
 // the table, the board, and the detail view so formatting stays consistent.
 
-// The 8 statuses in lifecycle order (used to order the status board columns and
-// the status <Select>). Mirrors STATE_MACHINE's keys; kept explicit so the board
-// column order is intentional rather than object-key-order-dependent.
+// The 7 canonical statuses in lifecycle order (used to order the status board
+// columns and the status <Select>). Mirrors STATE_MACHINE's keys; kept explicit
+// so the board column order is intentional rather than object-key-order-dependent.
 export const STATUS_ORDER: readonly TenderStatus[] = [
-  'DETECTED',
-  'QUALIFIED',
-  'OPEN',
-  'PRICING',
-  'APPROVAL',
+  'NOT_STARTED',
+  'PIC_PRICING',
+  'CUSTOMER_PRICING',
+  'DOCUMENTS',
   'SUBMITTED',
-  'WON',
+  'AWARDED',
   'LOST',
 ];
 
+// Human-readable status labels (the enum values are SCREAMING_SNAKE_CASE). Used
+// anywhere a status is shown to a user instead of rendering the raw token.
+export const STATUS_LABEL: Record<TenderStatus, string> = {
+  NOT_STARTED: 'Not started',
+  PIC_PRICING: 'PIC pricing',
+  CUSTOMER_PRICING: 'Customer pricing',
+  DOCUMENTS: 'Documents',
+  SUBMITTED: 'Submitted',
+  AWARDED: 'Awarded',
+  LOST: 'Lost',
+};
+
 // Tailwind classes for each status badge. Tuned for the dark shell: a tinted
-// surface + readable foreground, with WON/LOST as the clear terminal signals.
+// surface + readable foreground, ramping from neutral (not started) through the
+// pricing/documents stages, with AWARDED/LOST as the clear terminal signals.
 export const STATUS_BADGE_CLASS: Record<TenderStatus, string> = {
-  DETECTED: 'bg-slate-500/15 text-slate-300 border-slate-500/25',
-  QUALIFIED: 'bg-sky-500/15 text-sky-300 border-sky-500/25',
-  OPEN: 'bg-blue-500/15 text-blue-300 border-blue-500/25',
-  PRICING: 'bg-violet-500/15 text-violet-300 border-violet-500/25',
-  APPROVAL: 'bg-amber-500/15 text-amber-300 border-amber-500/25',
+  NOT_STARTED: 'bg-slate-500/15 text-slate-300 border-slate-500/25',
+  PIC_PRICING: 'bg-sky-500/15 text-sky-300 border-sky-500/25',
+  CUSTOMER_PRICING: 'bg-violet-500/15 text-violet-300 border-violet-500/25',
+  DOCUMENTS: 'bg-amber-500/15 text-amber-300 border-amber-500/25',
   SUBMITTED: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/25',
-  WON: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25',
+  AWARDED: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25',
   LOST: 'bg-rose-500/15 text-rose-300 border-rose-500/25',
 };
 

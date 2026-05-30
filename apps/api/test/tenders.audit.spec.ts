@@ -11,7 +11,7 @@ import { FakeTable, makeFakeDb } from './fake-db';
 
 const ORG_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const T_A = 'a1111111-1111-1111-1111-111111111111';
-const PIC: AuthUser = { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', role: 'PIC', organizationId: ORG_A };
+const PIC: AuthUser = { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', role: 'L5', organizationId: ORG_A };
 
 // A no-op PinoLogger stub (the interceptor only logs on skip/error paths).
 const loggerStub = {
@@ -47,10 +47,10 @@ function setup() {
     {
       id: T_A,
       organizationId: ORG_A,
-      externalId: 'EXT-A',
+      vergabeId: 'EXT-A',
       source: 'PORTAL',
       title: 'Org A tender',
-      status: 'OPEN',
+      status: 'PIC_PRICING',
       currency: 'EUR',
       isAboveThreshold: false,
       createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -80,7 +80,7 @@ describe('tenders auditing', () => {
 
     const created = await controller.create(
       ORG_A,
-      { externalId: 'NEW-1', source: 'PORTAL', title: 'Fresh' } as never,
+      { vergabeId: 'NEW-1', source: 'PORTAL', title: 'Fresh' } as never,
       req,
     );
 
@@ -108,7 +108,12 @@ describe('tenders auditing', () => {
     const { controller, interceptor, auditLog } = setup();
     const req = makeReq('POST', `/tenders/${T_A}/transition`);
 
-    await controller.transition(ORG_A, T_A, { to: 'PRICING' } as never, req);
+    await controller.transition(
+      ORG_A,
+      T_A,
+      { to: 'CUSTOMER_PRICING' } as never,
+      req,
+    );
 
     await runInterceptor(interceptor, req);
     expect(auditLog.rows).toHaveLength(1);
@@ -117,8 +122,8 @@ describe('tenders auditing', () => {
       entityId: T_A,
       action: 'TRANSITION',
       organizationId: ORG_A,
-      before: { status: 'OPEN' },
-      after: { status: 'PRICING' },
+      before: { status: 'PIC_PRICING' },
+      after: { status: 'CUSTOMER_PRICING' },
     });
   });
 });

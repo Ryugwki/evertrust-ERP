@@ -24,31 +24,31 @@ function reflectorReturning(perms: Permission[] | undefined): Reflector {
   } as unknown as Reflector;
 }
 
-const ADMIN: AuthUser = { id: 'u1', role: 'ADMIN', organizationId: 'org1' };
-const PIC: AuthUser = { id: 'u2', role: 'PIC', organizationId: 'org1' };
+const L1: AuthUser = { id: 'u1', role: 'L1', organizationId: 'org1' };
+const L5: AuthUser = { id: 'u2', role: 'L5', organizationId: 'org1' };
 
 // WHY: permission-based RBAC is the single authorization control. A guard that
 // lets a role through without the required permission (or blocks one that has
 // it) is a real authz bug — these tests fail the instant that expansion/check
 // logic regresses.
 describe('PermissionsGuard', () => {
-  it('allows when the role holds the required permission (ADMIN -> admin:config)', () => {
+  it('allows when the role holds the required permission (L1 -> admin:config)', () => {
     const guard = new PermissionsGuard(reflectorReturning(['admin:config']));
-    expect(guard.canActivate(contextWithUser(ADMIN))).toBe(true);
+    expect(guard.canActivate(contextWithUser(L1))).toBe(true);
   });
 
-  it('denies when the role lacks the required permission (PIC -> admin:config)', () => {
+  it('denies when the role lacks the required permission (L5 -> admin:config)', () => {
     const guard = new PermissionsGuard(reflectorReturning(['admin:config']));
-    expect(() => guard.canActivate(contextWithUser(PIC))).toThrow(
+    expect(() => guard.canActivate(contextWithUser(L5))).toThrow(
       ForbiddenException,
     );
   });
 
-  it('requires ALL listed permissions (PIC has tenders:read but not pricing:approve)', () => {
+  it('requires ALL listed permissions (L5 has tenders:read but not pricing:approve)', () => {
     const guard = new PermissionsGuard(
       reflectorReturning(['tenders:read', 'pricing:approve']),
     );
-    expect(() => guard.canActivate(contextWithUser(PIC))).toThrow(
+    expect(() => guard.canActivate(contextWithUser(L5))).toThrow(
       ForbiddenException,
     );
   });
@@ -62,25 +62,25 @@ describe('PermissionsGuard', () => {
 
   it('allows any authenticated user when no @RequirePermissions is declared', () => {
     const guard = new PermissionsGuard(reflectorReturning(undefined));
-    expect(guard.canActivate(contextWithUser(PIC))).toBe(true);
+    expect(guard.canActivate(contextWithUser(L5))).toBe(true);
   });
 });
 
-// WHY: ROLE_PERMISSIONS is the source of truth the guard expands. ADMIN must be
-// a superuser — if any permission is ever added but not granted to ADMIN, that
+// WHY: ROLE_PERMISSIONS is the source of truth the guard expands. L1 must be
+// a superuser — if any permission is ever added but not granted to L1, that
 // is a misconfiguration this test catches.
 describe('permissionsForRole', () => {
-  it('grants ADMIN every defined permission', () => {
-    const adminPerms = permissionsForRole('ADMIN');
+  it('grants L1 every defined permission', () => {
+    const l1Perms = permissionsForRole('L1');
     for (const perm of PERMISSIONS) {
-      expect(adminPerms).toContain(perm);
+      expect(l1Perms).toContain(perm);
     }
-    expect(adminPerms).toHaveLength(PERMISSIONS.length);
+    expect(l1Perms).toHaveLength(PERMISSIONS.length);
   });
 
   it('returns a copy that cannot mutate the shared mapping', () => {
-    const a = permissionsForRole('PIC');
+    const a = permissionsForRole('L5');
     a.push('admin:config');
-    expect(permissionsForRole('PIC')).not.toContain('admin:config');
+    expect(permissionsForRole('L5')).not.toContain('admin:config');
   });
 });

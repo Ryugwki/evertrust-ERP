@@ -8,34 +8,37 @@ import {
 // slips through (or a legal one that gets blocked) corrupts operational state.
 // These tests pin the exact adjacency the API + web both depend on.
 describe('tender STATE_MACHINE', () => {
-  it('allows a defined forward transition (DETECTED -> QUALIFIED)', () => {
-    expect(canTransition('DETECTED', 'QUALIFIED')).toBe(true);
+  it('allows a defined forward transition (NOT_STARTED -> PIC_PRICING)', () => {
+    expect(canTransition('NOT_STARTED', 'PIC_PRICING')).toBe(true);
   });
 
-  it('allows dropping any non-terminal state to LOST (PRICING -> LOST)', () => {
-    expect(canTransition('PRICING', 'LOST')).toBe(true);
+  it('allows the parallel Track B fork (PIC_PRICING -> DOCUMENTS)', () => {
+    expect(canTransition('PIC_PRICING', 'DOCUMENTS')).toBe(true);
   });
 
-  it('rejects a skip-ahead transition (DETECTED -> SUBMITTED)', () => {
-    expect(canTransition('DETECTED', 'SUBMITTED')).toBe(false);
+  it('allows dropping any non-terminal state to LOST (CUSTOMER_PRICING -> LOST)', () => {
+    expect(canTransition('CUSTOMER_PRICING', 'LOST')).toBe(true);
   });
 
-  it('rejects any transition out of a terminal state (WON, LOST)', () => {
+  it('rejects a skip-ahead transition (NOT_STARTED -> SUBMITTED)', () => {
+    expect(canTransition('NOT_STARTED', 'SUBMITTED')).toBe(false);
+  });
+
+  it('rejects any transition out of a terminal state (AWARDED, LOST)', () => {
     const all: TenderStatus[] = [
-      'DETECTED',
-      'QUALIFIED',
-      'OPEN',
-      'PRICING',
-      'APPROVAL',
+      'NOT_STARTED',
+      'PIC_PRICING',
+      'CUSTOMER_PRICING',
+      'DOCUMENTS',
       'SUBMITTED',
-      'WON',
+      'AWARDED',
       'LOST',
     ];
     for (const to of all) {
-      expect(canTransition('WON', to)).toBe(false);
+      expect(canTransition('AWARDED', to)).toBe(false);
       expect(canTransition('LOST', to)).toBe(false);
     }
-    expect(STATE_MACHINE.WON).toHaveLength(0);
+    expect(STATE_MACHINE.AWARDED).toHaveLength(0);
     expect(STATE_MACHINE.LOST).toHaveLength(0);
   });
 
