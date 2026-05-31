@@ -677,6 +677,105 @@ export const TenderDeadlineRiskDto = z.object({
 export type TenderDeadlineRiskDto = z.infer<typeof TenderDeadlineRiskDto>;
 
 // ============================================================================
+// PHASE 7 (R34–R37): conditional QC gate + submission act + evidence logging
+// The submission act stays HUMAN (the portal). The ERP enforces the gates, records
+// the proof, and only then moves the tender to SUBMITTED — so SUBMITTED ⟺ a logged
+// submission_receipt (no submission without evidence). All gate predicates are PURE
+// so the API (enforcement) and the web UI (readiness card) read ONE authority.
+// ============================================================================
+
+// R34 — conditional QC. A QC review (approval_type 'QC') is REQUIRED before a tender
+// may be submitted when ANY of: it's above the EU procurement threshold (high-value),
+// its pricing is high-risk (≥35% unbacked or a top-5 line unbacked — computeTenderRisk),
+// or a QC review was explicitly opened (a human flagged it). Routine tenders skip QC
+// and can go straight to submit. Pure: the API computes the inputs, the web reuses it.
+export interface QcRequirement {
+  required: boolean;
+  reasons: string[];
+}
+export function qcRequired(input: {
+  isAboveThreshold: boolean;
+  highRisk: boolean;
+  qcRequested: boolean;
+}): QcRequirement {
+  const reasons: string[] = [];
+  if (input.isAboveThreshold)
+    reasons.push('Above the EU procurement threshold (high-value)');
+  if (input.highRisk) reasons.push('Pricing is high-risk (unbacked lines)');
+  if (input.qcRequested) reasons.push('A QC review was opened for this tender');
+  return { required: reasons.length > 0, reasons };
+}
+
+// The reasons a tender CANNOT be submitted yet (empty array = ready to submit).
+// Composes the Phase 6 customer-approval gate (isSubmissionBlocked) with the Phase 7
+// QC gate and the state-machine precondition. Shared by the API's submit() and the
+// web submission card so enforcement and display can never drift.
+export function submissionBlockers(input: {
+  status: TenderStatus;
+  hasCustomerApproval: boolean;
+  qcRequired: boolean;
+  hasApprovedQc: boolean;
+}): string[] {
+  const blockers: string[] = [];
+  if (!canTransition(input.status, 'SUBMITTED')) {
+    blockers.push(
+      `Tender must be in DOCUMENTS to submit (currently ${input.status}).`,
+    );
+  }
+  if (isSubmissionBlocked('SUBMITTED', input.hasCustomerApproval)) {
+    blockers.push(
+      'No customer approval recorded (no written approval → no submission).',
+    );
+  }
+  if (input.qcRequired && !input.hasApprovedQc) {
+    blockers.push('QC review required but not approved.');
+  }
+  return blockers;
+}
+
+// Body for POST /tenders/:id/submit — the human records the portal submission proof.
+// proofUrl is the channel-agnostic evidence reference (portal receipt id, link, or a
+// note). fileList optionally overrides the server's snapshot of the attached
+// documents (omit = the API snapshots the current document set automatically).
+export const SubmitTenderDto = z.object({
+  proofUrl: z.string().min(1).max(2000),
+  fileList: z.array(z.string().max(400)).max(200).optional(),
+});
+export type SubmitTenderDto = z.infer<typeof SubmitTenderDto>;
+
+// Read shape of a submission_receipts row — the immutable submission evidence
+// (proof + timestamp + the file-list snapshot taken at submit time).
+export const SubmissionReceiptDto = z.object({
+  id: z.string().uuid(),
+  tenderId: z.string().uuid(),
+  submittedBy: z.string().uuid(),
+  submittedAt: z.string(),
+  proofUrl: z.string(),
+  fileList: z.array(z.string()).nullable(),
+});
+export type SubmissionReceiptDto = z.infer<typeof SubmissionReceiptDto>;
+
+// GET /tenders/:id/submission — everything the submission card needs: the gate state
+// (computed the SAME way submit() enforces it), the QC requirement + reasons, the
+// proposed file list (current documents) and the logged receipts. canSubmit mirrors
+// blockers.length === 0.
+export const SubmissionReadinessDto = z.object({
+  status: TenderStatus,
+  hasCustomerApproval: z.boolean(),
+  qcRequired: z.boolean(),
+  qcReasons: z.array(z.string()),
+  qcRequestExists: z.boolean(),
+  hasApprovedQc: z.boolean(),
+  highRisk: z.boolean(),
+  blockers: z.array(z.string()),
+  canSubmit: z.boolean(),
+  // The document names currently attached (the proposed bid file list).
+  documents: z.array(z.string()),
+  receipts: z.array(SubmissionReceiptDto),
+});
+export type SubmissionReadinessDto = z.infer<typeof SubmissionReadinessDto>;
+
+// ============================================================================
 // GROWTH ENGINE — the "AIM sequence" (campaign launch → outbound arsenal)
 // A campaign is the AIM target. On launch the API fires the AIM n8n webhook,
 // which provisions the Drive campaign folder + config.json that the arsenal

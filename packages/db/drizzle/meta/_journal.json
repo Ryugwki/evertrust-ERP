@@ -57,6 +57,13 @@
       "when": 1780184000000,
       "tag": "0007_hermes_rfqs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780188000000,
+      "tag": "0008_submission_file_list",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,9 @@ import {
   PriceObservationDto,
   RfqDto,
   RunArsenalDto,
+  SubmissionReadinessDto,
+  SubmissionReceiptDto,
+  SubmitTenderDto,
   SupplierDto,
   TenderDeadlineRiskDto,
   TenderDto,
@@ -356,6 +359,22 @@ export const api = {
         method: 'POST',
         body: CreateRfqDto.parse(input),
         schema: RfqDto,
+      }),
+
+    // ---- Phase 7: submission readiness (the gate state) + the submit act ----
+    submission: (id: string, signal?: AbortSignal) =>
+      request<SubmissionReadinessDto>(`/tenders/${id}/submission`, {
+        schema: SubmissionReadinessDto,
+        signal,
+      }),
+
+    // Record the human submission proof; the API enforces the full gate, logs the
+    // receipt and advances the tender to SUBMITTED. Returns the receipt.
+    submit: (id: string, input: z.infer<typeof SubmitTenderDto>) =>
+      request<SubmissionReceiptDto>(`/tenders/${id}/submit`, {
+        method: 'POST',
+        body: SubmitTenderDto.parse(input),
+        schema: SubmissionReceiptDto,
       }),
   },
 

@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { TendersModule } from './tenders/tenders.module';
 import { PricingModule } from './pricing/pricing.module';
 import { RfqModule } from './rfq/rfq.module';
+import { SubmissionModule } from './submission/submission.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ArsenalModule } from './arsenal/arsenal.module';
@@ -31,6 +32,7 @@ import { AuditInterceptor } from './common/audit.interceptor';
     TendersModule,
     PricingModule,
     RfqModule,
+    SubmissionModule,
     ApprovalsModule,
     CampaignsModule,
     ArsenalModule,

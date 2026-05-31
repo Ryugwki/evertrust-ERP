@@ -32,6 +32,8 @@ export const queryKeys = {
     approvals: (id: string) => ['tenders', 'approvals', id] as const,
     // Phase 5c: the tender's dispatched supplier RFQs.
     rfqs: (id: string) => ['tenders', 'rfqs', id] as const,
+    // Phase 7: the tender's submission readiness (gate state + receipts).
+    submission: (id: string) => ['tenders', 'submission', id] as const,
     // Phase 6b: the org-wide deadline at-risk worklist (no id — it's a roll-up).
     deadlineRisk: () => ['tenders', 'deadline-risk'] as const,
   },

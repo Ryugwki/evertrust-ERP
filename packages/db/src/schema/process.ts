@@ -100,6 +100,9 @@ export const submissionReceipts = pgTable(
       .notNull()
       .defaultNow(),
     proofUrl: text('proof_url').notNull(),
+    // Phase 7 (R36–R37): immutable snapshot of the document file list at submit
+    // time (string[] of document names). NULLABLE for rolling-deploy safety.
+    fileList: jsonb('file_list'),
   },
   (t) => [
     index('submission_receipts_tender_id_idx').on(t.tenderId),

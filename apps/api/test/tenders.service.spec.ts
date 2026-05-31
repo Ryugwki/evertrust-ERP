@@ -130,68 +130,24 @@ describe('TendersService — transition state machine', () => {
   });
 });
 
-describe('TendersService — Phase 6 submission gate (no approval → no submit)', () => {
-  // WHY: the hard compliance rule. A tender in DOCUMENTS may reach SUBMITTED ONLY
-  // when an APPROVED CUSTOMER approval is on record. A PENDING/REJECTED customer
-  // approval, or an APPROVED approval of another type, must NOT unblock it — and a
-  // blocked attempt must 400 without mutating state.
-  const APPROVAL = 'e1111111-1111-1111-1111-111111111111';
-
-  // T_A advanced to DOCUMENTS (legal PIC_PRICING -> DOCUMENTS Track-B fork) so
-  // SUBMITTED is the next state the gate guards.
+describe('TendersService — transition refuses a direct → SUBMITTED (Phase 7)', () => {
+  // WHY: SUBMITTED is reached ONLY through POST /tenders/:id/submit
+  // (SubmissionService), which enforces the customer-approval + conditional-QC gates
+  // AND logs the submission receipt. So the generic transition must refuse a direct
+  // → SUBMITTED (keeping the invariant SUBMITTED ⟺ a logged receipt). The full gate
+  // behaviour is covered in submission.service.spec.ts.
   function atDocuments() {
     const ctx = seededService();
     ctx.tenders.rows[0]!.status = 'DOCUMENTS';
     return ctx;
   }
 
-  it('blocks DOCUMENTS -> SUBMITTED with no recorded customer approval', async () => {
+  it('rejects DOCUMENTS -> SUBMITTED via the generic transition and leaves state unchanged', async () => {
     const { service } = atDocuments();
     await expect(
       service.transition(ORG_A, T_A, 'SUBMITTED'),
     ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('still blocks when the customer approval is only PENDING', async () => {
-    const { service, approvals } = atDocuments();
-    approvals.rows.push({
-      id: APPROVAL,
-      tenderId: T_A,
-      type: 'CUSTOMER',
-      status: 'PENDING',
-      __seq: 1,
-    });
-    await expect(
-      service.transition(ORG_A, T_A, 'SUBMITTED'),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('does not count an APPROVED approval of another type (PRICING) and leaves state unchanged', async () => {
-    const { service, approvals } = atDocuments();
-    approvals.rows.push({
-      id: APPROVAL,
-      tenderId: T_A,
-      type: 'PRICING',
-      status: 'APPROVED',
-      __seq: 1,
-    });
-    await expect(
-      service.transition(ORG_A, T_A, 'SUBMITTED'),
-    ).rejects.toBeInstanceOf(BadRequestException);
     expect((await service.get(ORG_A, T_A)).status).toBe('DOCUMENTS');
-  });
-
-  it('allows DOCUMENTS -> SUBMITTED once an APPROVED customer approval exists', async () => {
-    const { service, approvals } = atDocuments();
-    approvals.rows.push({
-      id: APPROVAL,
-      tenderId: T_A,
-      type: 'CUSTOMER',
-      status: 'APPROVED',
-      __seq: 1,
-    });
-    const { after } = await service.transition(ORG_A, T_A, 'SUBMITTED');
-    expect(after.status).toBe('SUBMITTED');
   });
 });
 
