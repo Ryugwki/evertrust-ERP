@@ -12,6 +12,7 @@ import {
 import type { Request } from 'express';
 import type {
   LineItemDto,
+  PriceAssistResultDto,
   PriceObservationDto,
 } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
@@ -21,6 +22,7 @@ import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
 import { LineItemsService } from './line-items.service';
 import { ObservationsService } from './observations.service';
+import { PriceAssistService } from './price-assist.service';
 import {
   CreateLineItemBodyDto,
   CreatePriceObservationBodyDto,
@@ -37,6 +39,7 @@ export class LineItemsController {
   constructor(
     private readonly lineItems: LineItemsService,
     private readonly observations: ObservationsService,
+    private readonly assist: PriceAssistService,
   ) {}
 
   // ---- Line items ----
@@ -138,5 +141,20 @@ export class LineItemsController {
       after: obs,
     });
     return obs as unknown as PriceObservationDto;
+  }
+
+  // ---- Claude price-assist (Phase 5b) ----
+  // Ask Claude for a unit-price SUGGESTION for an (unbacked) line. Returns the
+  // suggestion + confidence; never mutates pricing (the human accepts it as an
+  // AI_ESTIMATE observation via POST .../observations). pricing:write — same gate
+  // as recording evidence. Not audited here: the model run is logged to ai_runs,
+  // and the human's accept is audited as the observation it creates.
+  @RequirePermissions('pricing:write')
+  @Post('line-items/:id/price-assist')
+  priceAssist(
+    @OrgId() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PriceAssistResultDto> {
+    return this.assist.suggest(orgId, id);
   }
 }

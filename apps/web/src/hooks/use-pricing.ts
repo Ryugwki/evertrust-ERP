@@ -5,6 +5,7 @@ import type {
   CreateLineItemDto,
   CreatePriceObservationDto,
   LineItemDto,
+  PriceAssistResultDto,
   PriceObservationDto,
   TenderPricingDto,
   UpdateLineItemDto,
@@ -103,6 +104,17 @@ export function useAddObservation(tenderId: string, lineId: string) {
       });
       invalidateTenderPricing(queryClient, tenderId);
     },
+  });
+}
+
+// Phase 5b — ask Claude for a price suggestion for one line. A MUTATION (it makes
+// a model call + logs an ai_runs row), not a query, and it does NOT invalidate
+// pricing: the suggestion never mutates the line. Accepting it goes through
+// useAddObservation (AI_ESTIMATE), which handles invalidation. The result carries
+// its own { configured, suggestion, error } so callers branch on it, not on throw.
+export function usePriceAssist(lineId: string) {
+  return useMutation<PriceAssistResultDto, ApiError, void>({
+    mutationFn: () => api.lineItems.priceAssist(lineId),
   });
 }
 

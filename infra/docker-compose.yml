@@ -91,6 +91,11 @@ services:
       N8N_REACH_BAZOOKA_WEBHOOK_URL: ${N8N_REACH_BAZOOKA_WEBHOOK_URL:-}
       N8N_REPLY_GLOCK_WEBHOOK_URL: ${N8N_REPLY_GLOCK_WEBHOOK_URL:-}
       N8N_SLEEPER_GRENADE_WEBHOOK_URL: ${N8N_SLEEPER_GRENADE_WEBHOOK_URL:-}
+      # Phase 5b — Claude price-assist (blank ANTHROPIC_API_KEY = feature disabled).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-latest}
+      # Phase 5c — Hermes supplier RFQ webhook (blank = RFQ send disabled).
+      N8N_HERMES_RFQ_WEBHOOK_URL: ${N8N_HERMES_RFQ_WEBHOOK_URL:-}
     volumes:
       - uploads:/app/uploads
     depends_on:

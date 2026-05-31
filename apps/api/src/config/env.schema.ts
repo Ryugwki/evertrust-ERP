@@ -43,6 +43,18 @@ export const EnvSchema = z.object({
   N8N_SLEEPER_GRENADE_WEBHOOK_URL: z.string().default(''),
   // (The daily Bazooka send time is now an ERP-editable setting in arsenal_settings,
   // not an env var — changeable in the UI without a redeploy.)
+
+  // Phase 5b — Claude price-assist. Blank ANTHROPIC_API_KEY = the feature is
+  // DISABLED (the price-assist endpoint returns { configured: false } instead of
+  // erroring), so the API is safe to run before a key is set. ANTHROPIC_MODEL is
+  // the model id used for suggestions — overridable without a code change.
+  ANTHROPIC_API_KEY: z.string().default(''),
+  ANTHROPIC_MODEL: z.string().default('claude-3-5-sonnet-latest'),
+
+  // Phase 5c — Hermes supplier RFQ. The n8n webhook the ERP fires to email an RFQ
+  // to suppliers. Blank = the RFQ trigger is disabled (the API rejects "send" with
+  // a clear message), so the feature is safe to deploy before the webhook exists.
+  N8N_HERMES_RFQ_WEBHOOK_URL: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

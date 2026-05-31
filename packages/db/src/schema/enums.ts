@@ -127,3 +127,9 @@ export const arsenalRunStatusEnum = pgEnum('arsenal_run_status', [
   'DISPATCHED',
   'FAILED',
 ]);
+
+// Outcome of a Hermes supplier-RFQ dispatch (Phase 5c). Same 2-state ERP→n8n
+// hand-off model as arsenal runs: DISPATCHED = the Hermes webhook accepted the RFQ
+// (n8n emails suppliers async); FAILED = the ERP could not reach it / non-2xx.
+// Supplier replies land as SUPPLIER_QUOTE price observations, not on this row.
+export const rfqStatusEnum = pgEnum('rfq_status', ['DISPATCHED', 'FAILED']);

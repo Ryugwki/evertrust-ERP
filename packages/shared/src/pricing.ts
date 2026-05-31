@@ -298,3 +298,85 @@ export const UpsertPricingDto = z.object({
   marginPct: z.number(),
 });
 export type UpsertPricingDto = z.infer<typeof UpsertPricingDto>;
+
+// ============================================================================
+// Phase 5b — Claude price-assist (AI suggests, a human decides; never auto-applies)
+// For an unbacked / RED LV line the API asks Claude for a unit-price estimate. The
+// result is a SUGGESTION only: a human reviews it and, if they accept, records it
+// as an AI_ESTIMATE price observation (source weight 40 → the line stays unbacked /
+// RED until a real quote backs it). The model's confidence is 0–1; below
+// PRICE_ASSIST_LOW_CONFIDENCE the run is flagged escalated (weak suggestion — get a
+// real quote) and the UI warns. Every call is logged to ai_runs for cost/quality
+// observability; the suggestion never mutates pricing on its own.
+// ============================================================================
+
+// Model-reported confidence (0–1) below which a suggestion is "low confidence":
+// the ai_runs row is marked escalated and the UI surfaces a warning.
+export const PRICE_ASSIST_LOW_CONFIDENCE = 0.5;
+
+// A Claude price suggestion as returned to the web (POST /line-items/:id/price-assist
+// response). unitPrice is a STRING (money precision) for one `unit` of the line, in
+// `currency`. lowConfidence mirrors confidence < PRICE_ASSIST_LOW_CONFIDENCE so the
+// UI never re-derives the threshold. `model` is the model id that produced it.
+export const PriceAssistSuggestionDto = z.object({
+  unitPrice: z.string(),
+  currency: z.string(),
+  confidence: z.number(),
+  rationale: z.string(),
+  assumptions: z.array(z.string()),
+  lowConfidence: z.boolean(),
+  model: z.string(),
+});
+export type PriceAssistSuggestionDto = z.infer<typeof PriceAssistSuggestionDto>;
+
+// Response of POST /line-items/:id/price-assist. configured=false when Claude is not
+// wired up (blank ANTHROPIC_API_KEY) — the UI shows a neutral "not configured" notice
+// rather than an error. error carries a human-readable model/network failure with
+// suggestion=null; the endpoint returns 200 and NEVER throws for an operational model
+// failure (failures are exposed, not hidden). A successful call sets suggestion and
+// leaves error null.
+export const PriceAssistResultDto = z.object({
+  configured: z.boolean(),
+  suggestion: PriceAssistSuggestionDto.nullable(),
+  error: z.string().nullable(),
+});
+export type PriceAssistResultDto = z.infer<typeof PriceAssistResultDto>;
+
+// ============================================================================
+// Phase 5c — Hermes supplier RFQ. The ERP dispatches an RFQ to selected suppliers
+// (via the Hermes n8n/Gmail webhook) asking them to quote selected line items of a
+// tender. The dispatch is logged (rfqs row); supplier replies come back in as
+// SUPPLIER_QUOTE price observations on the right line — the normal evidence path —
+// so the pricing engine re-weights them automatically. Mirrors the arsenal_runs
+// ERP→n8n hand-off model (DISPATCHED / FAILED); the ERP owns the hand-off only.
+// ============================================================================
+
+// Mirrors the rfq_status pgEnum — the ERP→n8n dispatch outcome.
+export const RfqStatus = z.enum(['DISPATCHED', 'FAILED']);
+export type RfqStatus = z.infer<typeof RfqStatus>;
+
+// Read shape of an rfqs row over HTTP. supplierIds/lineItemIds are the snapshot of
+// what was asked; detail is the human-readable webhook outcome; timestamps are ISO.
+export const RfqDto = z.object({
+  id: z.string().uuid(),
+  tenderId: z.string().uuid(),
+  supplierIds: z.array(z.string().uuid()),
+  lineItemIds: z.array(z.string().uuid()),
+  note: z.string().nullable(),
+  status: RfqStatus,
+  detail: z.string().nullable(),
+  dispatchedBy: z.string().uuid().nullable(),
+  createdAt: z.string(),
+});
+export type RfqDto = z.infer<typeof RfqDto>;
+
+// Body for POST /tenders/:tenderId/rfqs. At least one supplier is required;
+// lineItemIds is optional (empty = the whole tender — typically the unbacked lines,
+// chosen by the caller). note is an optional message to the suppliers. tenderId
+// comes from the route; status/detail/dispatchedBy are server-owned.
+export const CreateRfqDto = z.object({
+  supplierIds: z.array(z.string().uuid()).min(1, 'Pick at least one supplier'),
+  lineItemIds: z.array(z.string().uuid()).optional(),
+  note: z.string().max(2000).optional(),
+});
+export type CreateRfqDto = z.infer<typeof CreateRfqDto>;

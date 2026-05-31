@@ -50,6 +50,13 @@
       "when": 1780180000000,
       "tag": "0006_user_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780184000000,
+      "tag": "0007_hermes_rfqs",
+      "breakpoints": true
     }
   ]
 }

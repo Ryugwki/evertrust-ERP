@@ -26,6 +26,7 @@ import {
 import { RygBadge } from './ryg-badge';
 import { BidEpCell } from './bid-ep-cell';
 import { LineEvidence } from './line-evidence';
+import { PriceAssistDialog } from './price-assist-dialog';
 
 // The LV line-items table with the engine suggestion per line. Each row shows
 // position · description · qty · unit · editable bidEp · computed bidGp · the
@@ -195,6 +196,17 @@ function LineRow({
                   <Wand2 />
                   Use {formatSuggested(line.suggestedPrice, currency)}
                 </Button>
+              </Can>
+            ) : null}
+            {/* Unbacked line (no real evidence) → offer a Claude estimate to fill
+                the gap. Gated by pricing:write (same as recording evidence). */}
+            {!line.backed ? (
+              <Can permission="pricing:write">
+                <PriceAssistDialog
+                  tenderId={tenderId}
+                  lineItem={li}
+                  currency={currency}
+                />
               </Can>
             ) : null}
           </div>

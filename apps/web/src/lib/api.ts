@@ -13,6 +13,7 @@ import {
   CreateCustomerDto,
   CreateLineItemDto,
   CreatePriceObservationDto,
+  CreateRfqDto,
   CreateSupplierDto,
   CreateTenderDto,
   CustomerDto,
@@ -24,7 +25,9 @@ import {
   LoginDto,
   LoginResponseDto,
   MeDto,
+  PriceAssistResultDto,
   PriceObservationDto,
+  RfqDto,
   RunArsenalDto,
   SupplierDto,
   TenderDeadlineRiskDto,
@@ -65,6 +68,8 @@ const TenderDeadlineRiskListDto = z.array(TenderDeadlineRiskDto);
 const CampaignListDto = z.array(CampaignDto);
 // Arsenal: recent ERP→n8n trigger runs.
 const ArsenalRunListDto = z.array(ArsenalRunDto);
+// Phase 5c: the RFQs dispatched for a tender.
+const RfqListDto = z.array(RfqDto);
 // GET /tenders/:id/assignment returns the ACTIVE assignment or null.
 const AssignmentOrNullDto = AssignmentDto.nullable();
 
@@ -336,6 +341,22 @@ export const api = {
         body: CreateApprovalRequestDto.parse(input),
         schema: ApprovalRequestDto,
       }),
+
+    // ---- Phase 5c: Hermes supplier RFQ (list + dispatch) ----
+    listRfqs: (id: string, signal?: AbortSignal) =>
+      request<RfqDto[]>(`/tenders/${id}/rfqs`, {
+        schema: RfqListDto,
+        signal,
+      }),
+
+    // Dispatch an RFQ to suppliers (fires the Hermes webhook server-side). Returns
+    // the recorded row (status DISPATCHED | FAILED — the webhook is best-effort).
+    sendRfq: (id: string, input: z.infer<typeof CreateRfqDto>) =>
+      request<RfqDto>(`/tenders/${id}/rfqs`, {
+        method: 'POST',
+        body: CreateRfqDto.parse(input),
+        schema: RfqDto,
+      }),
   },
 
   // ---- Phase 6: approvals addressed by their own id (record a decision) ----
@@ -446,6 +467,15 @@ export const api = {
         method: 'POST',
         body: CreatePriceObservationDto.parse(input),
         schema: PriceObservationDto,
+      }),
+
+    // Phase 5b: ask Claude for a unit-price SUGGESTION (never auto-applied — the
+    // human records it as an AI_ESTIMATE observation). { configured:false } when
+    // Claude isn't wired up; { error } on a model failure (the call still 200s).
+    priceAssist: (id: string) =>
+      request<PriceAssistResultDto>(`/line-items/${id}/price-assist`, {
+        method: 'POST',
+        schema: PriceAssistResultDto,
       }),
   },
 
