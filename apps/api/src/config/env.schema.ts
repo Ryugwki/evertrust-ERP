@@ -26,6 +26,23 @@ export const EnvSchema = z.object({
   // Filesystem directory where uploaded tender documents are stored (Phase 4).
   // Created at boot if missing. In containers this is a mounted volume.
   UPLOAD_DIR: z.string().min(1).default('./uploads'),
+
+  // Growth Engine: the AIM "deploy campaign" n8n webhook (the reference's
+  // EVERTRUST_DEPLOY_WEBHOOK). Empty = skip the deploy step — the campaign still
+  // persists as DRAFT — so the feature is safe to run before the webhook is set.
+  N8N_AIM_WEBHOOK_URL: z.string().default(''),
+
+  // Arsenal stage webhooks (the "Run now" triggers). Each blank = that stage's
+  // trigger is disabled (the API rejects the run + the button hides). The
+  // schedule-only n8n workflows (Bazooka, Reply Glock, Sleeper) need a Webhook
+  // trigger added in n8n before their URLs resolve.
+  N8N_LEAD_SATELLITE_WEBHOOK_URL: z.string().default(''),
+  N8N_AMMO_FORGE_WEBHOOK_URL: z.string().default(''),
+  N8N_REACH_BAZOOKA_WEBHOOK_URL: z.string().default(''),
+  N8N_REPLY_GLOCK_WEBHOOK_URL: z.string().default(''),
+  N8N_SLEEPER_GRENADE_WEBHOOK_URL: z.string().default(''),
+  // (The daily Bazooka send time is now an ERP-editable setting in arsenal_settings,
+  // not an env var — changeable in the UI without a redeploy.)
 });
 
 export type Env = z.infer<typeof EnvSchema>;

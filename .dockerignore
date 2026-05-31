@@ -8,8 +8,10 @@
 .git
 **/*.tsbuildinfo
 
-# Local env + editor/OS cruft.
+# Local env + editor/OS cruft. (All .env files — runtime env comes from compose,
+# never baked into the image; also keeps a local apps/api/.env out of the image.)
 .env
+**/.env
 **/.env.local
 **/.env.*.local
 .DS_Store

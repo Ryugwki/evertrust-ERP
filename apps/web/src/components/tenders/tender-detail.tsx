@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ChevronLeft, Calculator } from 'lucide-react';
-import type { TenderDto } from '@evertrust/shared';
+import { computeDeadlineRisk, type TenderDto } from '@evertrust/shared';
 import { useTender } from '@/hooks/use-tenders';
 import { useCustomer } from '@/hooks/use-customers';
 import { Can } from '@/components/auth/can';
@@ -22,9 +22,11 @@ import {
   formatValue,
 } from '@/lib/tender-format';
 import { StatusBadge } from './status-badge';
+import { DeadlineRiskBadge } from './deadline-risk-badge';
 import { TenderTransition } from './tender-transition';
 import { TenderEditDialog } from './tender-edit-dialog';
 import { TenderAssigneeCard } from './tender-assignee-card';
+import { TenderApprovalCard } from './tender-approval-card';
 import { TenderDocumentsCard } from './tender-documents-card';
 
 // Tender detail surface: status shown prominently, all fields, a write-gated Edit
@@ -68,13 +70,21 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
   // Resolve the linked customer's name (best-effort; the field falls back to the
   // raw id if the lookup is unavailable).
   const customer = useCustomer(tender.customerId ?? undefined);
+  // Phase 6 (R31): client-side deadline risk for the header badge (display only;
+  // the authoritative at-risk worklist + escalation come from the API).
+  const deadlineRisk = computeDeadlineRisk(
+    tender.submissionDeadlineAt,
+    new Date(),
+    tender.status,
+  );
 
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-3">
+          <div className="mb-2 flex flex-wrap items-center gap-3">
             <StatusBadge status={tender.status} className="text-sm" />
+            <DeadlineRiskBadge risk={deadlineRisk} />
             <span className="font-mono text-xs text-muted-foreground">
               {tender.vergabeId} · {tender.source}
             </span>
@@ -108,6 +118,8 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
           <TenderTransition tender={tender} />
         </CardContent>
       </Card>
+
+      <TenderApprovalCard tenderId={tender.id} />
 
       <TenderAssigneeCard tenderId={tender.id} />
 

@@ -1,9 +1,15 @@
 'use client';
 
 import { ArrowRight } from 'lucide-react';
-import { nextStates, type TenderDto, type TenderStatus } from '@evertrust/shared';
+import {
+  isSubmissionBlocked,
+  nextStates,
+  type TenderDto,
+  type TenderStatus,
+} from '@evertrust/shared';
 import { toast } from 'sonner';
 import { useTransitionTender } from '@/hooks/use-tenders';
+import { useTenderApprovals } from '@/hooks/use-approvals';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { STATUS_LABEL } from '@/lib/tender-format';
@@ -17,6 +23,13 @@ import { StatusBadge } from './status-badge';
 export function TenderTransition({ tender }: { tender: TenderDto }) {
   const targets = nextStates(tender.status);
   const transition = useTransitionTender(tender.id);
+  // Phase 6: the SAME approvals cache the approval card reads. Using the shared
+  // isSubmissionBlocked rule, the →SUBMITTED affordance shown here cannot drift
+  // from the gate the API enforces.
+  const approvals = useTenderApprovals(tender.id);
+  const hasCustomerApproval = (approvals.data ?? []).some(
+    (a) => a.type === 'CUSTOMER' && a.status === 'APPROVED',
+  );
 
   function go(to: TenderStatus) {
     transition.mutate(
@@ -49,19 +62,34 @@ export function TenderTransition({ tender }: { tender: TenderDto }) {
       }
     >
       <div className="flex flex-wrap items-center gap-2">
-        {targets.map((to) => (
-          <Button
-            key={to}
-            variant="outline"
-            size="sm"
-            disabled={transition.isPending}
-            onClick={() => go(to)}
-          >
-            <ArrowRight />
-            {STATUS_LABEL[to]}
-          </Button>
-        ))}
+        {targets.map((to) => {
+          const blocked = isSubmissionBlocked(to, hasCustomerApproval);
+          return (
+            <Button
+              key={to}
+              variant="outline"
+              size="sm"
+              disabled={transition.isPending || blocked}
+              title={
+                blocked
+                  ? 'Customer approval must be recorded before submission'
+                  : undefined
+              }
+              onClick={() => go(to)}
+            >
+              <ArrowRight />
+              {STATUS_LABEL[to]}
+            </Button>
+          );
+        })}
       </div>
+      {isSubmissionBlocked('SUBMITTED', hasCustomerApproval) &&
+      targets.includes('SUBMITTED') ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Submission is blocked until a customer approval is recorded — see
+          “Customer Approval” below.
+        </p>
+      ) : null}
     </Can>
   );
 }

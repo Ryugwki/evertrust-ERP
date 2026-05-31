@@ -10,7 +10,11 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import type { AssignmentDto, TenderDto } from '@evertrust/shared';
+import type {
+  AssignmentDto,
+  TenderDeadlineRiskDto,
+  TenderDto,
+} from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
@@ -45,6 +49,17 @@ export class TendersController {
     // them to the TenderDto wire shape (ISO strings) at the HTTP boundary.
     return this.tenders.list(orgId, query.status) as unknown as Promise<
       TenderDto[]
+    >;
+  }
+
+  // Phase 6 (R31): the org's deadline at-risk worklist (most urgent first).
+  // Declared BEFORE :id — otherwise the ParseUUIDPipe on :id would 400 this
+  // static path before it could route here.
+  @RequirePermissions('tenders:read')
+  @Get('deadline-risk')
+  deadlineRisk(@OrgId() orgId: string): Promise<TenderDeadlineRiskDto[]> {
+    return this.tenders.deadlineRisk(orgId) as unknown as Promise<
+      TenderDeadlineRiskDto[]
     >;
   }
 

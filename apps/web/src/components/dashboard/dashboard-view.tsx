@@ -1,6 +1,7 @@
 'use client';
 
 import { ShieldCheck } from 'lucide-react';
+import { DEPARTMENT_LABELS, ROLE_LABELS } from '@evertrust/shared';
 import { useMe } from '@/hooks/use-auth';
 import { AppShell } from '@/components/shell/app-shell';
 import { Can } from '@/components/auth/can';
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DeadlineAtRiskCard } from '@/components/tenders/deadline-at-risk-card';
 import { UpdateNameForm } from './update-name-form';
 
 // Dashboard content inside the shared AppShell (which owns the topbar, the left
@@ -54,9 +56,11 @@ export function DashboardView() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   Signed in as {user.name}
-                  <Badge variant="secondary">{user.role}</Badge>
-                  {user.lane ? (
-                    <Badge variant="outline">{user.lane}</Badge>
+                  <Badge variant="secondary">{ROLE_LABELS[user.role]}</Badge>
+                  {user.department ? (
+                    <Badge variant="outline">
+                      {DEPARTMENT_LABELS[user.department]}
+                    </Badge>
                   ) : null}
                 </CardTitle>
                 <CardDescription>{user.email}</CardDescription>
@@ -66,6 +70,10 @@ export function DashboardView() {
               </CardContent>
             </Card>
             <UpdateNameForm user={user} />
+
+            {/* Phase 6 (R31): the "deadline at risk" operational frame — open
+                tenders inside the T-2 window, most urgent first. */}
+            <DeadlineAtRiskCard />
 
             {/* RBAC demo: this admin-only card renders only when the user's role
                 grants `admin:config` (i.e. L1/L2). The <Can> boundary gates the

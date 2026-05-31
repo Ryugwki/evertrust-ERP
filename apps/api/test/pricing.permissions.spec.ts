@@ -6,13 +6,12 @@ import { PricingController } from '../src/pricing/pricing.controller';
 import { LineItemsController } from '../src/pricing/line-items.controller';
 import type { AuthUser } from '../src/auth/auth.types';
 
-// Binds the REAL pricing routes' declared @RequirePermissions to the L1–L5
-// mapping end-to-end, so a regression in either the decorator or ROLE_PERMISSIONS
-// is caught. L5 (PIC) holds pricing:read but NOT pricing:write/approve; L4 (Niche
-// lead) holds pricing:write but NOT pricing:approve; L3 (Lane lead) holds all.
-const L5: AuthUser = { id: 'u-l5', role: 'L5', organizationId: 'org1' };
-const L4: AuthUser = { id: 'u-l4', role: 'L4', organizationId: 'org1' };
-const L3: AuthUser = { id: 'u-l3', role: 'L3', organizationId: 'org1' };
+// Binds the REAL pricing routes' declared @RequirePermissions to the
+// SUPER_ADMIN–EMPLOYEE mapping end-to-end, so a regression in either the
+// decorator or ROLE_PERMISSIONS is caught. EMPLOYEE holds pricing:read but NOT
+// pricing:write/approve; MANAGER (and up) holds read + write + approve.
+const EMPLOYEE: AuthUser = { id: 'u-emp', role: 'EMPLOYEE', organizationId: 'org1' };
+const MANAGER: AuthUser = { id: 'u-mgr', role: 'MANAGER', organizationId: 'org1' };
 
 function contextFor(
   getHandler: () => unknown,
@@ -51,40 +50,39 @@ const ctxCreateObservation = (u: AuthUser) =>
     u,
   );
 
-describe('pricing route permission gating (L1–L5 matrix)', () => {
+describe('pricing route permission gating (SUPER_ADMIN–EMPLOYEE matrix)', () => {
   const guard = new PermissionsGuard(new Reflector());
 
   it('the canonical pricing permission split holds', () => {
-    expect(hasPermission('L5', 'pricing:read')).toBe(true);
-    expect(hasPermission('L5', 'pricing:write')).toBe(false);
-    expect(hasPermission('L5', 'pricing:approve')).toBe(false);
-    expect(hasPermission('L4', 'pricing:write')).toBe(true);
-    expect(hasPermission('L4', 'pricing:approve')).toBe(false);
-    expect(hasPermission('L3', 'pricing:approve')).toBe(true);
+    expect(hasPermission('EMPLOYEE', 'pricing:read')).toBe(true);
+    expect(hasPermission('EMPLOYEE', 'pricing:write')).toBe(false);
+    expect(hasPermission('EMPLOYEE', 'pricing:approve')).toBe(false);
+    expect(hasPermission('MANAGER', 'pricing:write')).toBe(true);
+    expect(hasPermission('MANAGER', 'pricing:approve')).toBe(true);
   });
 
-  it('allows L5 to GET the pricing view (has pricing:read)', () => {
-    expect(guard.canActivate(ctxGetPricing(L5))).toBe(true);
+  it('allows EMPLOYEE to GET the pricing view (has pricing:read)', () => {
+    expect(guard.canActivate(ctxGetPricing(EMPLOYEE))).toBe(true);
   });
 
-  it('forbids L5 from upserting pricing (lacks pricing:write)', () => {
-    expect(() => guard.canActivate(ctxUpsertPricing(L5))).toThrow(
+  it('forbids EMPLOYEE from upserting pricing (lacks pricing:write)', () => {
+    expect(() => guard.canActivate(ctxUpsertPricing(EMPLOYEE))).toThrow(
       ForbiddenException,
     );
   });
 
-  it('allows L4 to upsert pricing and record an observation (pricing:write)', () => {
-    expect(guard.canActivate(ctxUpsertPricing(L4))).toBe(true);
-    expect(guard.canActivate(ctxCreateObservation(L4))).toBe(true);
+  it('allows MANAGER to upsert pricing and record an observation (pricing:write)', () => {
+    expect(guard.canActivate(ctxUpsertPricing(MANAGER))).toBe(true);
+    expect(guard.canActivate(ctxCreateObservation(MANAGER))).toBe(true);
   });
 
-  it('forbids L4 from finalizing pricing (lacks pricing:approve)', () => {
-    expect(() => guard.canActivate(ctxFinalize(L4))).toThrow(
+  it('forbids EMPLOYEE from finalizing pricing (lacks pricing:approve)', () => {
+    expect(() => guard.canActivate(ctxFinalize(EMPLOYEE))).toThrow(
       ForbiddenException,
     );
   });
 
-  it('allows L3 to finalize pricing (has pricing:approve)', () => {
-    expect(guard.canActivate(ctxFinalize(L3))).toBe(true);
+  it('allows MANAGER to finalize pricing (has pricing:approve)', () => {
+    expect(guard.canActivate(ctxFinalize(MANAGER))).toBe(true);
   });
 });

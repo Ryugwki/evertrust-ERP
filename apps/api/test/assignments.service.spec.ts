@@ -22,9 +22,9 @@ function seeded(initialAssignments: Record<string, unknown>[] = []) {
     },
   ]);
   const users = new FakeTable([
-    { id: PIC_A1, organizationId: ORG_A, name: 'Alice', role: 'L5' },
-    { id: PIC_A2, organizationId: ORG_A, name: 'Bob', role: 'L5' },
-    { id: PIC_B, organizationId: ORG_B, name: 'Mallory', role: 'L5' },
+    { id: PIC_A1, organizationId: ORG_A, name: 'Alice', role: 'EMPLOYEE' },
+    { id: PIC_A2, organizationId: ORG_A, name: 'Bob', role: 'EMPLOYEE' },
+    { id: PIC_B, organizationId: ORG_B, name: 'Mallory', role: 'EMPLOYEE' },
   ]);
   const assignments = new FakeTable(initialAssignments);
   const { db } = makeFakeDb(

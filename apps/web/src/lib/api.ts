@@ -1,13 +1,22 @@
 import { z } from 'zod';
 import {
+  AdminUserDto,
+  ApprovalRequestDto,
+  ArsenalRunDto,
+  ArsenalSettingsDto,
+  ArsenalStage,
   AssignmentDto,
   AssignTenderDto,
+  CampaignDto,
+  CreateApprovalRequestDto,
+  CreateCampaignDto,
   CreateCustomerDto,
   CreateLineItemDto,
   CreatePriceObservationDto,
   CreateSupplierDto,
   CreateTenderDto,
   CustomerDto,
+  DecideApprovalDto,
   DocumentDto,
   HealthDto,
   LineItemDto,
@@ -16,15 +25,19 @@ import {
   LoginResponseDto,
   MeDto,
   PriceObservationDto,
+  RunArsenalDto,
   SupplierDto,
+  TenderDeadlineRiskDto,
   TenderDto,
   TenderPricingDto,
   TransitionTenderDto,
+  UpdateArsenalSettingsDto,
   UpdateCustomerDto,
   UpdateLineItemDto,
   UpdateMyNameDto,
   UpdateSupplierDto,
   UpdateTenderDto,
+  UpdateUserDto,
   UploadDocumentDto,
   UpsertPricingDto,
   UserListItemDto,
@@ -37,11 +50,21 @@ const TenderListDto = z.array(TenderDto);
 const SupplierListDto = z.array(SupplierDto);
 const CustomerListDto = z.array(CustomerDto);
 const UserListDto = z.array(UserListItemDto);
+const AdminUserListDto = z.array(AdminUserDto);
 const DocumentListDto = z.array(DocumentDto);
 // Phase 5a pricing: list shapes validated as arrays so a single drifted row
 // fails the whole list loud instead of rendering undefined down the page.
 const LineItemListDto = z.array(LineItemDto);
 const PriceObservationListDto = z.array(PriceObservationDto);
+// Phase 6: the tender's approval requests, validated as an array so a single
+// drifted row fails the whole list loud.
+const ApprovalListDto = z.array(ApprovalRequestDto);
+// Phase 6b: the org's deadline at-risk worklist.
+const TenderDeadlineRiskListDto = z.array(TenderDeadlineRiskDto);
+// Growth Engine: the org's campaigns.
+const CampaignListDto = z.array(CampaignDto);
+// Arsenal: recent ERP→n8n trigger runs.
+const ArsenalRunListDto = z.array(ArsenalRunDto);
 // GET /tenders/:id/assignment returns the ACTIVE assignment or null.
 const AssignmentOrNullDto = AssignmentDto.nullable();
 
@@ -196,6 +219,13 @@ export const api = {
     get: (id: string, signal?: AbortSignal) =>
       request<TenderDto>(`/tenders/${id}`, { schema: TenderDto, signal }),
 
+    // Phase 6 (R31): the org's deadline at-risk worklist (most urgent first).
+    deadlineRisk: (signal?: AbortSignal) =>
+      request<TenderDeadlineRiskDto[]>('/tenders/deadline-risk', {
+        schema: TenderDeadlineRiskListDto,
+        signal,
+      }),
+
     create: (input: z.infer<typeof CreateTenderDto>) =>
       request<TenderDto>('/tenders', {
         method: 'POST',
@@ -288,6 +318,103 @@ export const api = {
       request<TenderPricingDto>(`/tenders/${id}/pricing/finalize`, {
         method: 'POST',
         schema: TenderPricingDto,
+      }),
+
+    // ---- Phase 6: customer-approval gate (list + open a request) ----
+    listApprovals: (id: string, signal?: AbortSignal) =>
+      request<ApprovalRequestDto[]>(`/tenders/${id}/approvals`, {
+        schema: ApprovalListDto,
+        signal,
+      }),
+
+    requestApproval: (
+      id: string,
+      input: z.infer<typeof CreateApprovalRequestDto>,
+    ) =>
+      request<ApprovalRequestDto>(`/tenders/${id}/approvals`, {
+        method: 'POST',
+        body: CreateApprovalRequestDto.parse(input),
+        schema: ApprovalRequestDto,
+      }),
+  },
+
+  // ---- Phase 6: approvals addressed by their own id (record a decision) ----
+  approvals: {
+    decide: (id: string, input: z.infer<typeof DecideApprovalDto>) =>
+      request<ApprovalRequestDto>(`/approvals/${id}/decide`, {
+        method: 'POST',
+        body: DecideApprovalDto.parse(input),
+        schema: ApprovalRequestDto,
+      }),
+  },
+
+  // ---- Admin: user management (users:manage) ----
+  adminUsers: {
+    list: (signal?: AbortSignal) =>
+      request<AdminUserDto[]>('/admin/users', {
+        schema: AdminUserListDto,
+        signal,
+      }),
+
+    // Change a user's role / position / department (async per-cell edit).
+    update: (id: string, input: z.infer<typeof UpdateUserDto>) =>
+      request<AdminUserDto>(`/admin/users/${id}`, {
+        method: 'PATCH',
+        body: UpdateUserDto.parse(input),
+        schema: AdminUserDto,
+      }),
+  },
+
+  // ---- Growth Engine: campaigns (the AIM sequence) ----
+  campaigns: {
+    list: (signal?: AbortSignal) =>
+      request<CampaignDto[]>('/campaigns', { schema: CampaignListDto, signal }),
+
+    get: (id: string, signal?: AbortSignal) =>
+      request<CampaignDto>(`/campaigns/${id}`, { schema: CampaignDto, signal }),
+
+    // "Lock & Load": persists the campaign and fires the AIM webhook server-side.
+    create: (input: z.infer<typeof CreateCampaignDto>) =>
+      request<CampaignDto>('/campaigns', {
+        method: 'POST',
+        body: CreateCampaignDto.parse(input),
+        schema: CampaignDto,
+      }),
+
+    // Delete a campaign (ERP record only — the Drive folder + leads are untouched).
+    delete: (id: string) =>
+      request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
+  },
+
+  // ---- Arsenal: manual stage triggers + run history ----
+  arsenal: {
+    listRuns: (signal?: AbortSignal) =>
+      request<ArsenalRunDto[]>('/arsenal/runs', {
+        schema: ArsenalRunListDto,
+        signal,
+      }),
+
+    // Fire a stage's n8n webhook (records + returns the run; status DISPATCHED |
+    // FAILED). campaignId is required for PER_CAMPAIGN stages.
+    run: (stage: ArsenalStage, input: z.infer<typeof RunArsenalDto>) =>
+      request<ArsenalRunDto>(`/arsenal/${stage}/run`, {
+        method: 'POST',
+        body: RunArsenalDto.parse(input),
+        schema: ArsenalRunDto,
+      }),
+
+    // Editable Growth-Engine settings (the daily Bazooka send time).
+    getSettings: (signal?: AbortSignal) =>
+      request<ArsenalSettingsDto>('/arsenal/settings', {
+        schema: ArsenalSettingsDto,
+        signal,
+      }),
+
+    updateSettings: (input: z.infer<typeof UpdateArsenalSettingsDto>) =>
+      request<ArsenalSettingsDto>('/arsenal/settings', {
+        method: 'PUT',
+        body: UpdateArsenalSettingsDto.parse(input),
+        schema: ArsenalSettingsDto,
       }),
   },
 

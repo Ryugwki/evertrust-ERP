@@ -42,15 +42,17 @@ async function seed(): Promise<void> {
       {
         name: 'Ada Admin',
         email: 'admin@evertrust-germany.de',
-        role: 'L1',
-        lane: 'OPERATIONS',
+        role: 'SUPER_ADMIN',
+        position: 'CEO',
+        department: 'OPERATIONS',
         organizationId: org.id,
       },
       {
         name: 'Pia PIC',
         email: 'pic@evertrust-germany.de',
-        role: 'L5',
-        lane: 'OPERATIONS',
+        role: 'EMPLOYEE',
+        position: 'OFFICER',
+        department: 'OPERATIONS',
         organizationId: org.id,
       },
     ])

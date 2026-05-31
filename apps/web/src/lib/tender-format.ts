@@ -1,4 +1,4 @@
-import type { TenderRegime, TenderStatus } from '@evertrust/shared';
+import type { DeadlineLevel, TenderRegime, TenderStatus } from '@evertrust/shared';
 
 // Presentational helpers for tender data. Pure functions, no React — shared by
 // the table, the board, and the detail view so formatting stays consistent.
@@ -40,6 +40,36 @@ export const STATUS_BADGE_CLASS: Record<TenderStatus, string> = {
   AWARDED: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25',
   LOST: 'bg-rose-500/15 text-rose-300 border-rose-500/25',
 };
+
+// Phase 6 (R31): deadline-risk level labels + badge palette (matches the status
+// badge styling for the dark shell). AT_RISK/OVERDUE read as the urgent signals.
+export const DEADLINE_LEVEL_LABEL: Record<DeadlineLevel, string> = {
+  NONE: 'No deadline',
+  SAFE: 'On track',
+  DUE_SOON: 'Due soon',
+  AT_RISK: 'At risk',
+  OVERDUE: 'Overdue',
+};
+
+export const DEADLINE_LEVEL_CLASS: Record<DeadlineLevel, string> = {
+  NONE: 'bg-slate-500/15 text-slate-300 border-slate-500/25',
+  SAFE: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25',
+  DUE_SOON: 'bg-amber-500/15 text-amber-300 border-amber-500/25',
+  AT_RISK: 'bg-orange-500/15 text-orange-300 border-orange-500/25',
+  OVERDUE: 'bg-rose-500/15 text-rose-300 border-rose-500/25',
+};
+
+// Human phrase for whole-days-to-deadline (the daysRemaining from
+// computeDeadlineRisk). Dash for null (no deadline / closed).
+export function formatDaysRemaining(days: number | null): string {
+  if (days === null) return '—';
+  if (days < 0) {
+    const n = Math.abs(days);
+    return `${n} day${n === 1 ? '' : 's'} overdue`;
+  }
+  if (days === 0) return 'due today';
+  return `${days} day${days === 1 ? '' : 's'} left`;
+}
 
 // Human-readable regime labels (the enum values are abbreviations).
 export const REGIME_LABEL: Record<TenderRegime, string> = {

@@ -12,7 +12,7 @@ import { FakeTable, makeFakeDb } from './fake-db';
 
 const ORG_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const T_A = 'a1111111-1111-1111-1111-111111111111';
-const PIC: AuthUser = { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', role: 'L5', organizationId: ORG_A };
+const PIC: AuthUser = { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', role: 'EMPLOYEE', organizationId: ORG_A };
 
 // A no-op PinoLogger stub (the interceptor only logs on skip/error paths).
 const loggerStub = {

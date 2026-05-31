@@ -8,12 +8,14 @@ import { and, desc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
 import type {
   CreateTenderDto,
+  DeadlineRiskDto,
   TenderStatus,
   UpdateTenderDto,
 } from '@evertrust/shared';
+import { computeDeadlineRisk } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import { tenantScope } from '../common/tenant';
-import { canTransition } from './tender-state-machine';
+import { canTransition, isSubmissionBlocked } from './tender-state-machine';
 
 // Row type as Drizzle returns it (Date timestamps, string numerics). The API
 // JSON-serializes these to the TenderDto wire shape.
@@ -136,6 +138,19 @@ export class TendersService {
       );
     }
 
+    // Phase 6 (R30) hard gate: a tender cannot reach SUBMITTED without a recorded
+    // customer approval. Channel-agnostic — the rule (isSubmissionBlocked) lives in
+    // @evertrust/shared and is shared with the web UI so the two cannot drift.
+    if (to === 'SUBMITTED') {
+      const hasApproval = await this.hasApprovedCustomerApproval(id);
+      if (isSubmissionBlocked(to, hasApproval)) {
+        throw new BadRequestException(
+          'Cannot submit: no customer approval recorded. Record the customer ' +
+            'approval first (no written approval → no submission).',
+        );
+      }
+    }
+
     const updated = await this.db
       .update(schema.tenders)
       .set({ status: to, updatedAt: new Date() })
@@ -145,5 +160,53 @@ export class TendersService {
     const after = updated[0];
     if (!after) throw new NotFoundException('Tender not found');
     return { before, after };
+  }
+
+  // Phase 6 (R31): the org's at-risk worklist. Maps every tenant tender through
+  // the deterministic deadline-risk rule (against a single `now`), keeps only the
+  // ones inside the T-2 escalation window (or overdue), and orders most-urgent
+  // first. This is the surface the dashboard renders AND n8n Cloud polls to route
+  // reminders/escalations — both read the same deterministic computation.
+  async deadlineRisk(
+    orgId: string,
+  ): Promise<{ tender: TenderRow; risk: DeadlineRiskDto }[]> {
+    const now = new Date();
+    const rows = await this.db
+      .select()
+      .from(schema.tenders)
+      .where(tenantScope(orgId, schema.tenders));
+
+    return rows
+      .map((tender) => ({
+        tender,
+        risk: computeDeadlineRisk(
+          tender.submissionDeadlineAt
+            ? tender.submissionDeadlineAt.toISOString()
+            : null,
+          now,
+          tender.status,
+        ),
+      }))
+      .filter((r) => r.risk.atRisk)
+      .sort((a, b) => (a.risk.daysRemaining ?? 0) - (b.risk.daysRemaining ?? 0));
+  }
+
+  // True iff the tender has at least one APPROVED CUSTOMER approval — the basis
+  // for the Phase 6 submission gate. The caller (transition) has already loaded
+  // the tender via get() under tenantScope, so querying the child
+  // approval_requests by tenderId here cannot leak across orgs.
+  private async hasApprovedCustomerApproval(tenderId: string): Promise<boolean> {
+    const rows = await this.db
+      .select()
+      .from(schema.approvalRequests)
+      .where(
+        and(
+          eq(schema.approvalRequests.tenderId, tenderId),
+          eq(schema.approvalRequests.type, 'CUSTOMER'),
+          eq(schema.approvalRequests.status, 'APPROVED'),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
   }
 }

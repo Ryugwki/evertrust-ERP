@@ -57,6 +57,7 @@ const COLUMN_TO_KEY: Record<string, string> = {
   vergabe_id: 'vergabeId',
   source: 'source',
   tender_id: 'tenderId',
+  campaign_id: 'campaignId',
   pic_id: 'picId',
   line_item_id: 'lineItemId',
   supplier_id: 'supplierId',

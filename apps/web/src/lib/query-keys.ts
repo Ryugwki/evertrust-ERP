@@ -12,6 +12,12 @@ export const queryKeys = {
     list: () => ['users', 'list'] as const,
   },
 
+  // Admin user management (full rows; role/position/department editing).
+  adminUsers: {
+    all: ['admin-users'] as const,
+    list: () => ['admin-users', 'list'] as const,
+  },
+
   tenders: {
     all: ['tenders'] as const,
     list: (query?: ListTendersQuery) => ['tenders', 'list', query ?? {}] as const,
@@ -22,12 +28,30 @@ export const queryKeys = {
     // Phase 5a: the tender's LV line items and its computed pricing view.
     lineItems: (id: string) => ['tenders', 'line-items', id] as const,
     pricing: (id: string) => ['tenders', 'pricing', id] as const,
+    // Phase 6: the tender's customer-approval requests (gate state).
+    approvals: (id: string) => ['tenders', 'approvals', id] as const,
+    // Phase 6b: the org-wide deadline at-risk worklist (no id — it's a roll-up).
+    deadlineRisk: () => ['tenders', 'deadline-risk'] as const,
   },
 
   // Phase 5a: a single line's price observations (keyed by line-item id).
   lineItems: {
     all: ['line-items'] as const,
     observations: (id: string) => ['line-items', 'observations', id] as const,
+  },
+
+  // Growth Engine: the org's campaigns (the AIM sequence).
+  campaigns: {
+    all: ['campaigns'] as const,
+    list: () => ['campaigns', 'list'] as const,
+    detail: (id: string) => ['campaigns', 'detail', id] as const,
+  },
+
+  // Arsenal: ERP→n8n stage trigger runs + editable settings.
+  arsenal: {
+    all: ['arsenal'] as const,
+    runs: () => ['arsenal', 'runs'] as const,
+    settings: () => ['arsenal', 'settings'] as const,
   },
 
   suppliers: {

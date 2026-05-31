@@ -7,6 +7,7 @@ import type {
   CreateTenderDto,
   DocumentDto,
   ListTendersQuery,
+  TenderDeadlineRiskDto,
   TenderDto,
   TransitionTenderDto,
   UpdateTenderDto,
@@ -31,6 +32,15 @@ export function useTender(id: string | undefined) {
     queryKey: queryKeys.tenders.detail(id ?? ''),
     queryFn: ({ signal }) => api.tenders.get(id as string, signal),
     enabled: Boolean(id),
+  });
+}
+
+// Phase 6 (R31): the org's deadline at-risk worklist (most urgent first). Polled
+// by the dashboard; the same computation the API exposes to n8n for escalation.
+export function useDeadlineRisk() {
+  return useQuery<TenderDeadlineRiskDto[], ApiError>({
+    queryKey: queryKeys.tenders.deadlineRisk(),
+    queryFn: ({ signal }) => api.tenders.deadlineRisk(signal),
   });
 }
 

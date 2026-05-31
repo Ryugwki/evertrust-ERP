@@ -2,6 +2,7 @@ import type { TenderStatus } from '@evertrust/shared';
 import {
   STATE_MACHINE,
   canTransition,
+  isSubmissionBlocked,
 } from '../src/tenders/tender-state-machine';
 
 // WHY: the lifecycle is the core domain rule of M1. An illegal transition that
@@ -45,6 +46,36 @@ describe('tender STATE_MACHINE', () => {
   it('never lists a state as its own successor (no self-loops)', () => {
     for (const [from, tos] of Object.entries(STATE_MACHINE)) {
       expect(tos).not.toContain(from);
+    }
+  });
+});
+
+// WHY: "no written approval → no submission" is the core Phase 6 (R30) compliance
+// rule. If this predicate ever returned false for an unapproved →SUBMITTED, a
+// tender could be submitted with no recorded customer approval — exactly the
+// failure the gate exists to prevent. The rule is channel-agnostic: it asks only
+// whether an approval EXISTS (the boolean), never how it arrived.
+describe('isSubmissionBlocked — Phase 6 customer-approval gate', () => {
+  it('blocks →SUBMITTED when no customer approval is recorded', () => {
+    expect(isSubmissionBlocked('SUBMITTED', false)).toBe(true);
+  });
+
+  it('allows →SUBMITTED once a customer approval is recorded', () => {
+    expect(isSubmissionBlocked('SUBMITTED', true)).toBe(false);
+  });
+
+  it('never blocks a non-submission transition, with or without approval', () => {
+    const nonSubmit: TenderStatus[] = [
+      'NOT_STARTED',
+      'PIC_PRICING',
+      'CUSTOMER_PRICING',
+      'DOCUMENTS',
+      'AWARDED',
+      'LOST',
+    ];
+    for (const to of nonSubmit) {
+      expect(isSubmissionBlocked(to, false)).toBe(false);
+      expect(isSubmissionBlocked(to, true)).toBe(false);
     }
   });
 });

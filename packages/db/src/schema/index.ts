@@ -7,3 +7,4 @@ export * from './auth';
 export * from './pricing';
 export * from './process';
 export * from './observability';
+export * from './campaigns';

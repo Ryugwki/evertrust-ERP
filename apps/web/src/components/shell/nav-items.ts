@@ -1,4 +1,11 @@
-import { Building2, FileText, LayoutDashboard, Truck } from 'lucide-react';
+import {
+  Building2,
+  Crosshair,
+  FileText,
+  LayoutDashboard,
+  Truck,
+  Users,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Permission } from '@evertrust/shared';
 
@@ -20,4 +27,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/tenders', label: 'Tenders', icon: FileText, permission: 'tenders:read' },
   { href: '/suppliers', label: 'Suppliers', icon: Truck, permission: 'suppliers:read' },
   { href: '/customers', label: 'Customers', icon: Building2, permission: 'customers:read' },
+  { href: '/growth-engine', label: 'Growth Engine', icon: Crosshair, permission: 'campaigns:read' },
+  { href: '/users', label: 'Users', icon: Users, permission: 'users:manage' },
 ];

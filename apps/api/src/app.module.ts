@@ -9,6 +9,9 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { TendersModule } from './tenders/tenders.module';
 import { PricingModule } from './pricing/pricing.module';
+import { ApprovalsModule } from './approvals/approvals.module';
+import { CampaignsModule } from './campaigns/campaigns.module';
+import { ArsenalModule } from './arsenal/arsenal.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { CustomersModule } from './customers/customers.module';
@@ -26,6 +29,9 @@ import { AuditInterceptor } from './common/audit.interceptor';
     UsersModule,
     TendersModule,
     PricingModule,
+    ApprovalsModule,
+    CampaignsModule,
+    ArsenalModule,
     DocumentsModule,
     SuppliersModule,
     CustomersModule,

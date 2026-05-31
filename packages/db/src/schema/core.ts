@@ -13,11 +13,12 @@ import {
 } from 'drizzle-orm/pg-core';
 import { organizations } from './org';
 import {
+  departmentEnum,
   documentTypeEnum,
-  laneEnum,
   ocrStatusEnum,
   tenderRegimeEnum,
   tenderStatusEnum,
+  userPositionEnum,
   userRoleEnum,
 } from './enums';
 
@@ -29,9 +30,12 @@ export const users = pgTable(
     organizationId: uuid('organization_id')
       .notNull()
       .references(() => organizations.id),
-    role: userRoleEnum('role').notNull().default('L5'),
-    // Operational lane the user belongs to (orthogonal to the L1–L5 role tier).
-    lane: laneEnum('lane').notNull().default('OPERATIONS'),
+    role: userRoleEnum('role').notNull().default('EMPLOYEE'),
+    // Department (org unit) the user belongs to — orthogonal to the role tier,
+    // NULLABLE (e.g. a CEO spanning the whole company has none).
+    department: departmentEnum('department'),
+    // Job title — orthogonal to role + department, NULLABLE, descriptive only.
+    position: userPositionEnum('position'),
     name: text('name').notNull(),
     email: text('email').notNull(),
     active: boolean('active').notNull().default(true),

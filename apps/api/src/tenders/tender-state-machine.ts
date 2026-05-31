@@ -6,4 +6,5 @@ export {
   STATE_MACHINE,
   canTransition,
   nextStates,
+  isSubmissionBlocked,
 } from '@evertrust/shared';

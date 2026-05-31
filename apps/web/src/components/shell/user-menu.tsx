@@ -1,7 +1,7 @@
 'use client';
 
 import { Building2, LogOut } from 'lucide-react';
-import type { MeDto } from '@evertrust/shared';
+import { DEPARTMENT_LABELS, ROLE_LABELS, type MeDto } from '@evertrust/shared';
 import { useLogout } from '@/hooks/use-auth';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +35,7 @@ export function UserMenu({ user }: { user: MeDto }) {
           </Avatar>
           <span className="hidden text-sm font-medium sm:inline">{user.name}</span>
           <Badge variant="outline" className="hidden font-normal sm:inline-flex">
-            {user.role}
+            {ROLE_LABELS[user.role]}
           </Badge>
         </Button>
       </DropdownMenuTrigger>
@@ -52,8 +52,10 @@ export function UserMenu({ user }: { user: MeDto }) {
                 neutral label rather than rendering "undefined". */}
             <span className="truncate">{user.organizationName ?? 'Organization'}</span>
             <Badge variant="secondary" className="ml-auto font-normal">
-              {/* role tier + lane where available, e.g. "L5 · OPERATIONS" */}
-              {user.lane ? `${user.role} · ${user.lane}` : user.role}
+              {/* role + department where available, e.g. "Manager · IT" */}
+              {user.department
+                ? `${ROLE_LABELS[user.role]} · ${DEPARTMENT_LABELS[user.department]}`
+                : ROLE_LABELS[user.role]}
             </Badge>
           </span>
         </DropdownMenuLabel>

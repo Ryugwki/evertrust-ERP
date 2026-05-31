@@ -83,6 +83,14 @@ services:
       # Document upload target; backed by the `uploads` named volume below so
       # files survive container restarts.
       UPLOAD_DIR: /app/uploads
+      # Growth Engine: ERP → n8n arsenal webhooks (blank = that trigger disabled).
+      # The daily Bazooka send TIME is an in-app setting (arsenal_settings), not env.
+      N8N_AIM_WEBHOOK_URL: ${N8N_AIM_WEBHOOK_URL:-}
+      N8N_LEAD_SATELLITE_WEBHOOK_URL: ${N8N_LEAD_SATELLITE_WEBHOOK_URL:-}
+      N8N_AMMO_FORGE_WEBHOOK_URL: ${N8N_AMMO_FORGE_WEBHOOK_URL:-}
+      N8N_REACH_BAZOOKA_WEBHOOK_URL: ${N8N_REACH_BAZOOKA_WEBHOOK_URL:-}
+      N8N_REPLY_GLOCK_WEBHOOK_URL: ${N8N_REPLY_GLOCK_WEBHOOK_URL:-}
+      N8N_SLEEPER_GRENADE_WEBHOOK_URL: ${N8N_SLEEPER_GRENADE_WEBHOOK_URL:-}
     volumes:
       - uploads:/app/uploads
     depends_on:
