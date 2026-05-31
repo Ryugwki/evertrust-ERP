@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
+import { effectivePermissions } from '@evertrust/shared';
 import type { LoginDto, LoginResponseDto, MeDto } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import type { JwtPayload } from './auth.types';
@@ -26,6 +27,7 @@ export class AuthService {
         role: schema.users.role,
         department: schema.users.department,
         position: schema.users.position,
+        permissions: schema.users.permissions,
         organizationId: schema.users.organizationId,
         organizationName: schema.organizations.name,
         active: schema.users.active,
@@ -56,6 +58,7 @@ export class AuthService {
       role: row.role,
       department: row.department,
       position: row.position,
+      permissions: effectivePermissions(row.role, row.permissions),
       organizationId: row.organizationId,
       organizationName: row.organizationName,
     };
@@ -80,6 +83,7 @@ export class AuthService {
         role: schema.users.role,
         department: schema.users.department,
         position: schema.users.position,
+        permissions: schema.users.permissions,
         organizationId: schema.users.organizationId,
         organizationName: schema.organizations.name,
       })
@@ -93,6 +97,9 @@ export class AuthService {
 
     const user = rows[0];
     if (!user) throw new UnauthorizedException('User no longer exists');
-    return user;
+    return {
+      ...user,
+      permissions: effectivePermissions(user.role, user.permissions),
+    };
   }
 }

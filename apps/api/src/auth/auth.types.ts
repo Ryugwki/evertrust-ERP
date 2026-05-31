@@ -1,4 +1,4 @@
-import type { UserRole } from '@evertrust/shared';
+import type { Permission, UserRole } from '@evertrust/shared';
 
 // The decoded JWT payload we sign on login and verify on every guarded request.
 // org carries the tenant so request handling can scope to it WITHOUT a DB lookup.
@@ -15,4 +15,8 @@ export interface AuthUser {
   id: string;
   role: UserRole;
   organizationId: string;
+  // Effective permissions, resolved per request by JwtStrategy (per-user set or
+  // role defaults). Optional so non-HTTP/test contexts can omit it — the guard
+  // falls back to the role's permissions when absent.
+  permissions?: Permission[];
 }

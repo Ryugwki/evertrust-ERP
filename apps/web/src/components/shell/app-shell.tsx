@@ -26,9 +26,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col bg-muted/40">
       <Topbar user={user} />
-      <div className="mx-auto flex w-full max-w-7xl flex-1">
-        <aside className="hidden w-56 shrink-0 border-r md:block">
-          <div className="sticky top-14">
+      <div className="flex w-full flex-1">
+        <aside className="hidden w-60 shrink-0 border-r md:block">
+          <div className="sticky top-14 h-[calc(100svh-3.5rem)]">
             <SidebarNav />
           </div>
         </aside>

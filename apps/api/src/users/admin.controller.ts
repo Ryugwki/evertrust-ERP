@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Patch, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type { AdminUserDto } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/auth.types';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
 import { UsersService } from './users.service';
@@ -36,11 +38,17 @@ export class AdminController {
   @Patch('users/:id')
   async updateUser(
     @OrgId() orgId: string,
+    @CurrentUser() actingUser: AuthUser,
     @Param('id') id: string,
     @Body() body: UpdateUserBodyDto,
     @Req() req: Request,
   ): Promise<AdminUserDto> {
-    const { before, after } = await this.users.updateUser(orgId, id, body);
+    const { before, after } = await this.users.updateUser(
+      orgId,
+      actingUser.id,
+      id,
+      body,
+    );
 
     setAuditContext(req, {
       entity: 'users',
@@ -51,6 +59,7 @@ export class AdminController {
         role: after.role,
         position: after.position,
         department: after.department,
+        active: after.active,
       },
     });
 

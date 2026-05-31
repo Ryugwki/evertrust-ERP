@@ -1,6 +1,12 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
+import {
+  CheckCircle2,
+  CircleDashed,
+  ExternalLink,
+  Target,
+  XCircle,
+} from 'lucide-react';
 import {
   ARSENAL_STAGE_META,
   type CampaignDto,
@@ -18,6 +24,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/common/page-header';
+import { StatTile } from '@/components/common/stat-tile';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/tender-format';
 import { ArsenalPipeline } from './arsenal-pipeline';
@@ -53,19 +61,61 @@ const STATUS_BADGE: Record<CampaignStatus, { label: string; className: string }>
 // visual + the launched-campaign history with deploy status.
 export function GrowthEngineView() {
   const campaigns = useCampaigns();
+  const data = campaigns.data ?? [];
+  const ready = !campaigns.isLoading && !campaigns.isError;
+  const countFor = (status: CampaignStatus) =>
+    data.filter((c) => c.status === status).length;
+  const deployed = countFor('DEPLOYED');
+  const failed = countFor('FAILED');
+  const draft = countFor('DRAFT');
+  // Show a skeleton in each tile value until the campaign list resolves.
+  const tile = (value: number) =>
+    campaigns.isLoading ? <Skeleton className="h-6 w-8" /> : value;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Growth Engine</h1>
-          <p className="text-sm text-muted-foreground">
-            Set a target with AIM — Lock &amp; Load launches the outbound arsenal.
-          </p>
-        </div>
-        <Can permission="campaigns:write">
-          <AimLaunchDialog />
-        </Can>
+      <PageHeader
+        title="Growth Engine"
+        description="Set a target with AIM — Lock & Load launches the outbound arsenal."
+        actions={
+          <Can permission="campaigns:write">
+            <AimLaunchDialog />
+          </Can>
+        }
+      />
+
+      {/* Campaign summary: live deploy outcomes across the launched arsenal. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile
+          label="Campaigns"
+          value={tile(data.length)}
+          hint={
+            ready ? `${draft} awaiting deploy` : 'Total launched targets'
+          }
+          accent="bg-sky-400"
+          icon={<Target className="size-4" />}
+        />
+        <StatTile
+          label="Deployed"
+          value={tile(deployed)}
+          hint="Running autonomously in n8n"
+          accent="bg-emerald-400"
+          icon={<CheckCircle2 className="size-4" />}
+        />
+        <StatTile
+          label="Failed"
+          value={tile(failed)}
+          hint={failed > 0 ? 'Needs attention' : 'No deploy errors'}
+          accent="bg-destructive"
+          icon={<XCircle className="size-4" />}
+        />
+        <StatTile
+          label="Draft"
+          value={tile(draft)}
+          hint="Provisioned, not yet deployed"
+          accent="bg-amber-400"
+          icon={<CircleDashed className="size-4" />}
+        />
       </div>
 
       <Card>

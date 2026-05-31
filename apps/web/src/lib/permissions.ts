@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { hasPermission, type Permission } from '@evertrust/shared';
+import { effectivePermissions, type Permission } from '@evertrust/shared';
 import { useMe } from '@/hooks/use-auth';
 
 // ---- UI-side RBAC ----
 // IMPORTANT: these helpers gate the *UI only*. They decide what a user can see,
 // never what they can do — the API's PermissionsGuard is the real enforcement
-// boundary and re-checks every request against ROLE_PERMISSIONS. Hiding a button
+// boundary and re-checks every request against the user's EFFECTIVE permissions. Hiding a button
 // here is a UX nicety, not a security control. Both sides read the same
 // @evertrust/shared mapping, so they can never disagree on policy.
 
@@ -25,7 +25,10 @@ export type CanState = {
 export function useCanState(perm: Permission): CanState {
   const { data: user, isLoading } = useMe();
   const allowed = useMemo(
-    () => (user ? hasPermission(user.role, perm) : false),
+    () =>
+      user
+        ? effectivePermissions(user.role, user.permissions).includes(perm)
+        : false,
     [user, perm],
   );
   return { allowed, isLoading };

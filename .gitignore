@@ -18,9 +18,10 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Ignore .md files in a specific folder
 docs/*.md
 
-# Ignore all .md files EXCEPT README.md
+# Ignore all .md files EXCEPT README.md + the web design standard
 *.md
 !README.md
+!apps/web/DESIGN.md
 
 # Runtime data
 pids
