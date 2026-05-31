@@ -1,0 +1,274 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { schema } from '@evertrust/db';
+import { ArsenalService } from '../src/arsenal/arsenal.service';
+import type { AppConfigService } from '../src/config/app-config.service';
+import { FakeTable, makeFakeDb } from './fake-db';
+
+const ORG_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const ORG_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+const C_A = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+const USER = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+const BAZOOKA_URL = 'https://evertrustgmbh.app.n8n.cloud/webhook/bazooka';
+const LEAD_URL = 'https://evertrustgmbh.app.n8n.cloud/webhook/wf03-lead-research';
+
+function makeConfig(urls: Record<string, string>): AppConfigService {
+  return { get: (k: string) => urls[k] ?? '' } as unknown as AppConfigService;
+}
+
+function seed(urls: Record<string, string> = {}) {
+  const campaigns = new FakeTable([
+    {
+      id: C_A,
+      organizationId: ORG_A,
+      name: null,
+      niche: 'LED',
+      target: 'EPC',
+      country: 'Germany',
+      state: 'Berlin',
+      project: 'LED Retrofit Berlin 2026',
+      gmailLabel: 'LED-Berlin-2026',
+      salesCalendarId: 'info@evertrust-germany.de',
+      whatsappNumber: '+4915112345678',
+      status: 'DEPLOYED',
+      driveFolderId: 'F1',
+      driveFolderUrl: 'https://drive/F1',
+      deployError: null,
+      deployedBy: null,
+      deployedAt: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      __seq: 1,
+    },
+  ]);
+  const arsenalRuns = new FakeTable([]);
+  const arsenalSettings = new FakeTable([]);
+  const { db } = makeFakeDb(
+    new Map<unknown, FakeTable>([
+      [schema.campaigns, campaigns],
+      [schema.arsenalRuns, arsenalRuns],
+      [schema.arsenalSettings, arsenalSettings],
+    ]),
+  );
+  return { service: new ArsenalService(db, makeConfig(urls)), arsenalRuns };
+}
+
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+describe('ArsenalService — run (manual triggers)', () => {
+  // WHY: a GLOBAL stage (Bazooka) hits its webhook with no campaign and the
+  // hand-off is recorded DISPATCHED. The recorded run is the operator's proof.
+  it('fires a GLOBAL stage webhook and records DISPATCHED (no campaign)', async () => {
+    const { service } = seed({ N8N_REACH_BAZOOKA_WEBHOOK_URL: BAZOOKA_URL });
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const run = await service.run(ORG_A, 'REACH_BAZOOKA', {
+      source: 'MANUAL',
+      userId: USER,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(BAZOOKA_URL);
+    expect(run.stage).toBe('REACH_BAZOOKA');
+    expect(run.status).toBe('DISPATCHED');
+    expect(run.campaignId).toBeFalsy();
+    expect(run.organizationId).toBe(ORG_A);
+    expect(run.source).toBe('MANUAL');
+    expect(run.triggeredBy).toBe(USER);
+  });
+
+  // WHY: a stage with no webhook configured must fail LOUD (400) and record
+  // nothing — there's nothing to dispatch. Defends the UI's disabled state.
+  it('rejects an unconfigured stage and records no run', async () => {
+    const { service, arsenalRuns } = seed({});
+    await expect(
+      service.run(ORG_A, 'REACH_BAZOOKA', { source: 'MANUAL' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(arsenalRuns.rows).toHaveLength(0);
+  });
+
+  // WHY: from the Arsenal panel, a PER_CAMPAIGN stage runs GLOBALLY (no campaign)
+  // — it must NOT require a campaignId; it fires with no campaign context.
+  it('runs a PER_CAMPAIGN stage globally when no campaign is given', async () => {
+    const { service } = seed({ N8N_LEAD_SATELLITE_WEBHOOK_URL: LEAD_URL });
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const run = await service.run(ORG_A, 'LEAD_SATELLITE', { source: 'MANUAL' });
+
+    expect(run.status).toBe('DISPATCHED');
+    expect(run.campaignId).toBeFalsy();
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(opts.body as string)).toMatchObject({
+      stage: 'LEAD_SATELLITE',
+      source: 'erp',
+    });
+  });
+
+  // WHY: the Reply Glock / Sleeper n8n webhooks are GET — POSTing to them 404s, so
+  // a GET-method stage must be fired with GET and no body.
+  it('fires a GET-webhook stage with GET and no body', async () => {
+    const { service } = seed({
+      N8N_REPLY_GLOCK_WEBHOOK_URL: 'https://n8n/webhook/wf6-reply-glock',
+    });
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const run = await service.run(ORG_A, 'REPLY_GLOCK', { source: 'MANUAL' });
+
+    const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://n8n/webhook/wf6-reply-glock');
+    expect(opts.method).toBe('GET');
+    expect(opts.body).toBeUndefined();
+    expect(run.status).toBe('DISPATCHED');
+  });
+
+  // WHY: a PER_CAMPAIGN stage must carry THAT campaign's context to n8n and tie
+  // the run to the campaign.
+  it('fires a PER_CAMPAIGN stage with campaign context + records the campaignId', async () => {
+    const { service } = seed({ N8N_LEAD_SATELLITE_WEBHOOK_URL: LEAD_URL });
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const run = await service.run(ORG_A, 'LEAD_SATELLITE', {
+      campaignId: C_A,
+      source: 'MANUAL',
+      userId: USER,
+    });
+
+    const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(LEAD_URL);
+    expect(JSON.parse(opts.body as string)).toMatchObject({
+      stage: 'LEAD_SATELLITE',
+      campaign: { campaignId: C_A, niche: 'LED', driveFolderUrl: 'https://drive/F1' },
+    });
+    expect(run.campaignId).toBe(C_A);
+    expect(run.status).toBe('DISPATCHED');
+  });
+
+  it('404s a PER_CAMPAIGN run against another org’s campaign', async () => {
+    const { service } = seed({ N8N_LEAD_SATELLITE_WEBHOOK_URL: LEAD_URL });
+    globalThis.fetch = jest.fn() as unknown as typeof fetch;
+    await expect(
+      service.run(ORG_B, 'LEAD_SATELLITE', { campaignId: C_A, source: 'MANUAL' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('records FAILED on a non-2xx webhook response', async () => {
+    const { service } = seed({ N8N_REACH_BAZOOKA_WEBHOOK_URL: BAZOOKA_URL });
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: false, status: 502 }) as unknown as typeof fetch;
+    const run = await service.run(ORG_A, 'REACH_BAZOOKA', { source: 'MANUAL' });
+    expect(run.status).toBe('FAILED');
+    expect(run.detail).toContain('502');
+  });
+});
+
+describe('ArsenalService — listRuns', () => {
+  // WHY: runs are visible to the initiating org PLUS global (scheduled, null-org)
+  // runs — but never another org's.
+  it('returns org runs + global runs, excludes other orgs', async () => {
+    const { service, arsenalRuns } = seed({
+      N8N_REACH_BAZOOKA_WEBHOOK_URL: BAZOOKA_URL,
+    });
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
+
+    await service.run(ORG_A, 'REACH_BAZOOKA', { source: 'MANUAL', userId: USER });
+    await service.run(null, 'REACH_BAZOOKA', { source: 'SCHEDULED' }); // global
+    arsenalRuns.rows.push({
+      id: 'rb',
+      organizationId: ORG_B,
+      stage: 'REACH_BAZOOKA',
+      campaignId: null,
+      source: 'MANUAL',
+      status: 'DISPATCHED',
+      detail: null,
+      triggeredBy: null,
+      createdAt: new Date(),
+      __seq: 99,
+    });
+
+    const orgs = (await service.listRuns(ORG_A)).map((r) => r.organizationId);
+    expect(orgs).toContain(ORG_A);
+    expect(orgs).toContain(null);
+    expect(orgs).not.toContain(ORG_B);
+  });
+});
+
+describe('ArsenalService — settings (editable daily time + timezone)', () => {
+  // WHY: the daily Bazooka time + zone are ERP-editable settings, not env config.
+  // They default off, upsert in place, and are org-scoped.
+  it('defaults to no daily time/zone when unset', async () => {
+    const { service } = seed();
+    expect(await service.getSettings(ORG_A)).toEqual({
+      bazookaDailyAt: null,
+      bazookaTimezone: null,
+    });
+  });
+
+  it('upserts then reads back the time + zone, scoped to the org', async () => {
+    const { service } = seed();
+    await service.updateSettings(
+      ORG_A,
+      { bazookaDailyAt: '08:30', bazookaTimezone: 'Europe/Berlin' },
+      USER,
+    );
+    expect(await service.getSettings(ORG_A)).toEqual({
+      bazookaDailyAt: '08:30',
+      bazookaTimezone: 'Europe/Berlin',
+    });
+    // editing again updates in place (no duplicate row) — incl. the zone
+    await service.updateSettings(
+      ORG_A,
+      { bazookaDailyAt: '09:15', bazookaTimezone: 'UTC' },
+      USER,
+    );
+    expect(await service.getSettings(ORG_A)).toEqual({
+      bazookaDailyAt: '09:15',
+      bazookaTimezone: 'UTC',
+    });
+    // another org is unaffected
+    expect(await service.getSettings(ORG_B)).toEqual({
+      bazookaDailyAt: null,
+      bazookaTimezone: null,
+    });
+  });
+
+  it('clears the daily time but keeps the zone (null = off)', async () => {
+    const { service } = seed();
+    await service.updateSettings(
+      ORG_A,
+      { bazookaDailyAt: '08:00', bazookaTimezone: 'Europe/Berlin' },
+      USER,
+    );
+    await service.updateSettings(
+      ORG_A,
+      { bazookaDailyAt: null, bazookaTimezone: 'Europe/Berlin' },
+      USER,
+    );
+    expect(await service.getSettings(ORG_A)).toEqual({
+      bazookaDailyAt: null,
+      bazookaTimezone: 'Europe/Berlin',
+    });
+  });
+
+  it('surfaces the saved time + zone to the scheduler boot query', async () => {
+    const { service } = seed();
+    await service.updateSettings(
+      ORG_A,
+      { bazookaDailyAt: '08:00', bazookaTimezone: 'Europe/Vienna' },
+      USER,
+    );
+    expect(await service.settingsWithDailyTime()).toEqual([
+      {
+        organizationId: ORG_A,
+        bazookaDailyAt: '08:00',
+        bazookaTimezone: 'Europe/Vienna',
+      },
+    ]);
+  });
+});
