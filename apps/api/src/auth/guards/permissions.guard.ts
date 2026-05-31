@@ -34,7 +34,9 @@ export class PermissionsGuard implements CanActivate {
 
     if (!user) throw new ForbiddenException('Insufficient permissions');
 
-    const granted = ROLE_PERMISSIONS[user.role] ?? [];
+    // Prefer the per-request EFFECTIVE permissions JwtStrategy attaches; fall back
+    // to the role's defaults (e.g. test contexts that build a bare AuthUser).
+    const granted = user.permissions ?? ROLE_PERMISSIONS[user.role] ?? [];
     const hasAll = required.every((perm) => granted.includes(perm));
     if (!hasAll) throw new ForbiddenException('Insufficient permissions');
 

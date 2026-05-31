@@ -45,8 +45,8 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
+    <Card className="w-full max-w-sm border-border/80 shadow-lg">
+      <CardHeader className="text-center">
         <CardTitle className="text-xl">Sign in</CardTitle>
         <CardDescription>Access the Evertrust operations console.</CardDescription>
       </CardHeader>

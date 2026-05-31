@@ -1,10 +1,17 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
+import { effectivePermissions } from '@evertrust/shared';
 import type {
   AdminUserDto,
   Department,
   MeDto,
+  Permission,
   Position,
   UpdateUserDto,
   UserListItemDto,
@@ -19,7 +26,13 @@ export interface UpdateNameResult {
 }
 
 export interface UpdateUserResult {
-  before: { role: UserRole; position: Position | null; department: Department | null };
+  before: {
+    role: UserRole;
+    position: Position | null;
+    department: Department | null;
+    active: boolean;
+    permissions: Permission[] | null;
+  };
   after: AdminUserDto;
 }
 
@@ -86,21 +99,28 @@ export class UsersService {
         role: schema.users.role,
         position: schema.users.position,
         department: schema.users.department,
+        permissions: schema.users.permissions,
         active: schema.users.active,
         createdAt: schema.users.createdAt,
       })
       .from(schema.users)
       .where(tenantScope(orgId, schema.users))
       .orderBy(asc(schema.users.name));
-    return rows.map((r) => ({ ...r, createdAt: new Date(r.createdAt).toISOString() }));
+    return rows.map((r) => ({
+      ...r,
+      permissions: r.permissions as Permission[] | null,
+      createdAt: new Date(r.createdAt).toISOString(),
+    }));
   }
 
-  // Update a user's role/position/department. Tenant-scoped on BOTH the prior
-  // read (for the audit `before` + 404) and the write, so an admin can never
-  // touch a user outside their organization. Only provided fields are changed;
-  // position/department may be set to null to clear them.
+  // Update a user's role/position/department, or (de)activate them. Tenant-scoped
+  // on BOTH the prior read (audit `before` + 404) and the write, so an admin can
+  // never touch a user outside their org. Guarded: a Super Admin's role cannot be
+  // changed, and you cannot deactivate yourself or a Super Admin. Only provided
+  // fields change; position/department may be set to null to clear them.
   async updateUser(
     orgId: string,
+    actingUserId: string,
     userId: string,
     dto: UpdateUserDto,
   ): Promise<UpdateUserResult> {
@@ -114,6 +134,8 @@ export class UsersService {
         role: schema.users.role,
         position: schema.users.position,
         department: schema.users.department,
+        active: schema.users.active,
+        permissions: schema.users.permissions,
       })
       .from(schema.users)
       .where(scope)
@@ -122,14 +144,56 @@ export class UsersService {
     const prev = existing[0];
     if (!prev) throw new NotFoundException('User not found');
 
+    // Super Admin is protected: its role can't be changed (no demoting the top
+    // admin / locking the org out).
+    if (
+      prev.role === 'SUPER_ADMIN' &&
+      dto.role !== undefined &&
+      dto.role !== 'SUPER_ADMIN'
+    ) {
+      throw new ForbiddenException("A Super Admin's role cannot be changed");
+    }
+
+    // Deactivation guards: never your own account, never a Super Admin.
+    if (dto.active === false) {
+      if (userId === actingUserId) {
+        throw new ForbiddenException('You cannot deactivate your own account');
+      }
+      if (prev.role === 'SUPER_ADMIN') {
+        throw new ForbiddenException('A Super Admin cannot be deactivated');
+      }
+    }
+
+    // Self-lockout guard: you can never end up without user-management access on
+    // your OWN account (via a role change, a permission edit, or a reset).
+    const nextRole = dto.role ?? prev.role;
+    const nextStored =
+      dto.permissions !== undefined ? dto.permissions : prev.permissions;
+    if (
+      userId === actingUserId &&
+      !effectivePermissions(nextRole, nextStored).includes('users:manage')
+    ) {
+      throw new ForbiddenException(
+        'You cannot remove your own user-management access',
+      );
+    }
+
     const patch: Partial<{
       role: UserRole;
       position: Position | null;
       department: Department | null;
+      active: boolean;
+      permissions: Permission[] | null;
     }> = {};
     if (dto.role !== undefined) patch.role = dto.role;
     if (dto.position !== undefined) patch.position = dto.position;
     if (dto.department !== undefined) patch.department = dto.department;
+    if (dto.active !== undefined) patch.active = dto.active;
+    // SUPER_ADMIN is always full — its stored permissions are ignored (effective
+    // is computed as all), so only persist permission edits for non-SA targets.
+    if (dto.permissions !== undefined && nextRole !== 'SUPER_ADMIN') {
+      patch.permissions = dto.permissions;
+    }
 
     const selection = {
       id: schema.users.id,
@@ -138,6 +202,7 @@ export class UsersService {
       role: schema.users.role,
       position: schema.users.position,
       department: schema.users.department,
+      permissions: schema.users.permissions,
       active: schema.users.active,
       createdAt: schema.users.createdAt,
     };
@@ -156,8 +221,12 @@ export class UsersService {
     if (!after) throw new NotFoundException('User not found');
 
     return {
-      before: prev,
-      after: { ...after, createdAt: new Date(after.createdAt).toISOString() },
+      before: { ...prev, permissions: prev.permissions as Permission[] | null },
+      after: {
+        ...after,
+        permissions: after.permissions as Permission[] | null,
+        createdAt: new Date(after.createdAt).toISOString(),
+      },
     };
   }
 }

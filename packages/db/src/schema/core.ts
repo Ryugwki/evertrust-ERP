@@ -36,6 +36,9 @@ export const users = pgTable(
     department: departmentEnum('department'),
     // Job title — orthogonal to role + department, NULLABLE, descriptive only.
     position: userPositionEnum('position'),
+    // Per-user permission override (array of permission keys). NULL = follow the
+    // role's defaults; effective permissions are computed in @evertrust/shared.
+    permissions: text('permissions').array(),
     name: text('name').notNull(),
     email: text('email').notNull(),
     active: boolean('active').notNull().default(true),

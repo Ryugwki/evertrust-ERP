@@ -1,31 +1,15 @@
 'use client';
 
-import { toast } from 'sonner';
 import {
   DEPARTMENT_LABELS,
-  Department,
+  PERMISSIONS,
   POSITION_LABELS,
-  Position,
   ROLE_LABELS,
-  UserRole,
+  effectivePermissions,
   type AdminUserDto,
-  type UpdateUserDto,
 } from '@evertrust/shared';
-import { useAdminUsers, useUpdateUser } from '@/hooks/use-admin-users';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -34,147 +18,118 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+import { formatDateTime } from '@/lib/tender-format';
+import { ROLE_STYLES } from './role-styles';
+import { UserRowActions } from './user-row-actions';
 
-// Radix Select forbids an empty-string item value; this sentinel = "clear to null"
-// (a user with no position/department — e.g. a CEO who spans the company).
-const NONE = '__none__';
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+}
 
-// Option lists come straight from the shared Zod enums so the UI can never offer
-// a value the API would reject.
-const ROLE_OPTIONS = UserRole.options;
-const POSITION_OPTIONS = Position.options;
-const DEPARTMENT_OPTIONS = Department.options;
+const TOTAL_PERMISSIONS = PERMISSIONS.length;
 
-// User-management table: one row per teammate, with inline Role / Position /
-// Department dropdowns that PATCH the change immediately (async, per cell). Role
-// is required; position + department are clearable. Gated by users:manage on both
-// the page and every API call.
-export function UsersTable() {
-  const users = useAdminUsers();
-
+// Team table: one row per member. Role / position / department are read-only here
+// (editing happens in the Edit dialog); the Permissions column shows how many of
+// the org's permissions the role grants. Each row carries Details / Edit /
+// Deactivate (or Reactivate) actions. Inactive members are greyed.
+export function UsersTable({ users }: { users: AdminUserDto[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Team</CardTitle>
-        <CardDescription>
-          Set each member&apos;s role, position, and department. Changes save the
-          moment you pick a value.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {users.isLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : users.isError ? (
-          <p className="text-sm text-destructive">
-            Could not load users: {users.error.message}
-          </p>
-        ) : users.data && users.data.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Position</TableHead>
-                <TableHead>Department</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.data.map((u) => (
-                <UserRow key={u.id} user={u} />
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <p className="text-sm text-muted-foreground">No team members yet.</p>
-        )}
-      </CardContent>
-    </Card>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Member</TableHead>
+          <TableHead>Role</TableHead>
+          <TableHead>Position</TableHead>
+          <TableHead>Department</TableHead>
+          <TableHead>Permissions</TableHead>
+          <TableHead>Joined</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {users.map((u) => (
+          <UserRow key={u.id} user={u} />
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
 function UserRow({ user }: { user: AdminUserDto }) {
-  const update = useUpdateUser();
-  const busy = update.isPending;
-
-  function save(patch: UpdateUserDto) {
-    update.mutate(
-      { id: user.id, patch },
-      {
-        onError: (e) =>
-          toast.error(e.message ?? `Could not update ${user.name}.`),
-      },
-    );
-  }
+  const role = ROLE_STYLES[user.role];
+  const permCount = effectivePermissions(user.role, user.permissions).length;
+  const inactive = !user.active;
 
   return (
-    <TableRow>
+    <TableRow className={cn(inactive && 'opacity-55')}>
       <TableCell>
-        <div className="font-medium">{user.name}</div>
-        <div className="text-xs text-muted-foreground">{user.email}</div>
+        <div className="flex items-center gap-3">
+          <Avatar className="size-9">
+            <AvatarFallback className={cn('text-xs font-medium', role.tint)}>
+              {initials(user.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-medium leading-tight">
+                {user.name}
+              </span>
+              {inactive ? (
+                <Badge
+                  variant="outline"
+                  className="px-1.5 py-0 text-[10px] text-muted-foreground"
+                >
+                  Inactive
+                </Badge>
+              ) : null}
+            </div>
+            <div className="truncate text-xs text-muted-foreground">
+              {user.email}
+            </div>
+          </div>
+        </div>
       </TableCell>
 
       <TableCell>
-        <Select
-          value={user.role}
-          disabled={busy}
-          onValueChange={(v) => save({ role: v as UserRole })}
-        >
-          <SelectTrigger size="sm" className="w-[150px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ROLE_OPTIONS.map((r) => (
-              <SelectItem key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Badge className={cn('gap-1.5 border-transparent font-medium', role.tint)}>
+          <span className={cn('size-1.5 rounded-full', role.dot)} />
+          {ROLE_LABELS[user.role]}
+        </Badge>
       </TableCell>
 
-      <TableCell>
-        <Select
-          value={user.position ?? NONE}
-          disabled={busy}
-          onValueChange={(v) =>
-            save({ position: v === NONE ? null : (v as Position) })
-          }
-        >
-          <SelectTrigger size="sm" className="w-[170px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>— None —</SelectItem>
-            {POSITION_OPTIONS.map((p) => (
-              <SelectItem key={p} value={p}>
-                {POSITION_LABELS[p]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <TableCell className="text-sm">
+        {user.position ? (
+          POSITION_LABELS[user.position]
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </TableCell>
 
-      <TableCell>
-        <Select
-          value={user.department ?? NONE}
-          disabled={busy}
-          onValueChange={(v) =>
-            save({ department: v === NONE ? null : (v as Department) })
-          }
-        >
-          <SelectTrigger size="sm" className="w-[170px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>— None —</SelectItem>
-            {DEPARTMENT_OPTIONS.map((d) => (
-              <SelectItem key={d} value={d}>
-                {DEPARTMENT_LABELS[d]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <TableCell className="text-sm">
+        {user.department ? (
+          DEPARTMENT_LABELS[user.department]
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      <TableCell className="text-sm text-muted-foreground">
+        <span className="font-medium tabular-nums text-foreground">
+          {permCount}
+        </span>{' '}
+        <span className="text-xs">/ {TOTAL_PERMISSIONS}</span>
+      </TableCell>
+
+      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+        {formatDateTime(user.createdAt)}
+      </TableCell>
+
+      <TableCell className="text-right">
+        <UserRowActions user={user} />
       </TableCell>
     </TableRow>
   );

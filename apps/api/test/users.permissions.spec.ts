@@ -72,3 +72,39 @@ describe('user-management route permission gating (users:manage)', () => {
     );
   });
 });
+
+describe('PermissionsGuard honors per-user effective permissions', () => {
+  const guard = new PermissionsGuard(new Reflector());
+
+  it('an explicit permission set grants access the role would not', () => {
+    // EMPLOYEE role lacks users:manage, but an explicit per-user grant wins.
+    const granted: AuthUser = {
+      id: 'u-x',
+      role: 'EMPLOYEE',
+      organizationId: 'org1',
+      permissions: ['tenders:read', 'users:manage'],
+    };
+    expect(guard.canActivate(ctxUpdate(granted))).toBe(true);
+  });
+
+  it('an explicit permission set denies access the role would otherwise allow', () => {
+    // The guard trusts the attached effective set: a narrow override loses even
+    // for a SUPER_ADMIN role label.
+    const stripped: AuthUser = {
+      id: 'u-y',
+      role: 'SUPER_ADMIN',
+      organizationId: 'org1',
+      permissions: ['tenders:read'],
+    };
+    expect(() => guard.canActivate(ctxUpdate(stripped))).toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('falls back to role defaults when no explicit set is attached', () => {
+    expect(guard.canActivate(ctxUpdate(SUPER_ADMIN))).toBe(true);
+    expect(() => guard.canActivate(ctxUpdate(EMPLOYEE))).toThrow(
+      ForbiddenException,
+    );
+  });
+});

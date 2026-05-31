@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { schema } from '@evertrust/db';
 import { UsersService } from '../src/users/users.service';
 import { FakeTable, makeFakeDb } from './fake-db';
@@ -76,7 +76,7 @@ describe('UsersService — admin directory (listAllForOrg)', () => {
 describe('UsersService — updateUser (role / position / department)', () => {
   it('updates all three fields and returns the prior values as `before`', async () => {
     const { service } = seed();
-    const { before, after } = await service.updateUser(ORG_A, BOB, {
+    const { before, after } = await service.updateUser(ORG_A, ALICE, BOB, {
       role: 'MANAGER',
       position: 'DEPT_MANAGER',
       department: 'IT',
@@ -98,7 +98,7 @@ describe('UsersService — updateUser (role / position / department)', () => {
 
   it('patches a single field, leaving the others untouched', async () => {
     const { service } = seed();
-    const { after } = await service.updateUser(ORG_A, ALICE, {
+    const { after } = await service.updateUser(ORG_A, ALICE, ALICE, {
       department: 'BUSINESS',
     });
 
@@ -109,7 +109,7 @@ describe('UsersService — updateUser (role / position / department)', () => {
 
   it('clears position/department when set to null (e.g. a CEO with no dept)', async () => {
     const { service } = seed();
-    const { after } = await service.updateUser(ORG_A, ALICE, {
+    const { after } = await service.updateUser(ORG_A, ALICE, ALICE, {
       position: null,
       department: null,
     });
@@ -121,16 +121,96 @@ describe('UsersService — updateUser (role / position / department)', () => {
   it('404s updating a user in another org (tenant-scoped)', async () => {
     const { service } = seed();
     await expect(
-      service.updateUser(ORG_A, MALLORY, { role: 'ADMIN' }),
+      service.updateUser(ORG_A, ALICE, MALLORY, { role: 'ADMIN' }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('404s updating a non-existent user', async () => {
     const { service } = seed();
     await expect(
-      service.updateUser(ORG_A, 'ffffffff-ffff-ffff-ffff-ffffffffffff', {
+      service.updateUser(ORG_A, ALICE, 'ffffffff-ffff-ffff-ffff-ffffffffffff', {
         role: 'ADMIN',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('UsersService — updateUser guards (Super Admin + deactivation)', () => {
+  it("blocks changing a Super Admin's role, but allows other field edits", async () => {
+    const { service } = seed();
+    await expect(
+      service.updateUser(ORG_A, ALICE, ALICE, { role: 'ADMIN' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    // position/department on a Super Admin are still editable
+    const { after } = await service.updateUser(ORG_A, ALICE, ALICE, {
+      department: 'IT',
+    });
+    expect(after.role).toBe('SUPER_ADMIN');
+    expect(after.department).toBe('IT');
+  });
+
+  it('deactivates a normal user (active=false)', async () => {
+    const { service } = seed();
+    const { after } = await service.updateUser(ORG_A, ALICE, BOB, {
+      active: false,
+    });
+    expect(after.active).toBe(false);
+  });
+
+  it('blocks deactivating your own account', async () => {
+    const { service } = seed();
+    await expect(
+      service.updateUser(ORG_A, BOB, BOB, { active: false }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('blocks deactivating a Super Admin', async () => {
+    const { service } = seed();
+    await expect(
+      service.updateUser(ORG_A, BOB, ALICE, { active: false }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('reactivates a user (active=true) without guard', async () => {
+    const { service } = seed();
+    const { after } = await service.updateUser(ORG_A, ALICE, BOB, {
+      active: true,
+    });
+    expect(after.active).toBe(true);
+  });
+});
+
+describe('UsersService — updateUser per-user permissions', () => {
+  it('sets an explicit per-user permission override', async () => {
+    const { service } = seed();
+    const { after } = await service.updateUser(ORG_A, ALICE, BOB, {
+      permissions: ['tenders:read', 'campaigns:read'],
+    });
+    expect(after.permissions).toEqual(['tenders:read', 'campaigns:read']);
+  });
+
+  it('resets a user to role defaults (permissions = null)', async () => {
+    const { service } = seed();
+    const { after } = await service.updateUser(ORG_A, ALICE, BOB, {
+      permissions: null,
+    });
+    expect(after.permissions).toBeNull();
+  });
+
+  it('ignores permission edits for a Super Admin (always full)', async () => {
+    const { service } = seed();
+    // Try to narrow ALICE (Super Admin) — must not be persisted.
+    const { after } = await service.updateUser(ORG_A, BOB, ALICE, {
+      permissions: ['tenders:read'],
+    });
+    expect(after.permissions ?? null).toBeNull();
+  });
+
+  it('blocks removing your own user-management access', async () => {
+    const { service } = seed();
+    await expect(
+      service.updateUser(ORG_A, BOB, BOB, { permissions: ['tenders:read'] }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

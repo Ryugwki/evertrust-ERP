@@ -109,6 +109,12 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
+// Zod enum over the permission catalog — validates permission arrays on the wire
+// (per-user permission editing).
+export const PermissionEnum = z.enum(
+  [...PERMISSIONS] as [Permission, ...Permission[]],
+);
+
 // Authoritative role -> permissions mapping. SUPER_ADMIN holds every permission;
 // ADMIN is SUPER_ADMIN minus users:manage; MANAGER and EMPLOYEE are explicit
 // allow-lists. Changing access policy means changing this table, nothing else.
@@ -165,6 +171,17 @@ export function hasPermission(role: UserRole, perm: Permission): boolean {
   return ROLE_PERMISSIONS[role].includes(perm);
 }
 
+// A user's EFFECTIVE permissions: their explicit per-user set when customized,
+// otherwise their role's defaults. SUPER_ADMIN ALWAYS holds every permission
+// (full control, not editable) so the org can never be locked out of admin.
+export function effectivePermissions(
+  role: UserRole,
+  stored: readonly string[] | null | undefined,
+): Permission[] {
+  if (role === 'SUPER_ADMIN') return [...PERMISSIONS];
+  return stored ? ([...stored] as Permission[]) : permissionsForRole(role);
+}
+
 // ---- Organization (tenant) contract ----
 // The tenant boundary. The app runs single-tenant today, but every user and
 // org-scoped entity carries an organizationId so it is SaaS-ready by construction.
@@ -194,6 +211,10 @@ export const MeDto = z.object({
   // for rolling-deploy safety. See the `department`/`user_position` pgEnums.
   department: Department.nullable().optional(),
   position: Position.nullable().optional(),
+  // The user's EFFECTIVE permissions (per-user set or role defaults) so the web
+  // gates the UI off real authority. Optional for rolling-deploy safety — the
+  // client falls back to role defaults when an older API omits it.
+  permissions: z.array(PermissionEnum).optional(),
   organizationId: z.string().uuid(),
   // OPTIONAL on purpose: the human-readable org name is added by the M1 /auth/me
   // join. Keeping it optional means the currently-deployed api/web (which does
@@ -516,18 +537,26 @@ export const AdminUserDto = z.object({
   role: UserRole,
   position: Position.nullable(),
   department: Department.nullable(),
+  // Stored per-user permission override; null = "follow role defaults".
+  // Effective permissions = effectivePermissions(role, permissions).
+  permissions: z.array(PermissionEnum).nullable(),
   active: z.boolean(),
   createdAt: z.string(),
 });
 export type AdminUserDto = z.infer<typeof AdminUserDto>;
 
-// Patch a user's role / position / department from the management table. Every
-// field optional so the table can PATCH a single cell; position/department are
-// nullable so they can be cleared (e.g. a CEO with no department).
+// Patch a user's role / position / department, or (de)activate them, from the
+// management table. Every field optional so the table can PATCH a single cell;
+// position/department are nullable so they can be cleared (e.g. a CEO with no
+// department); `active` false = soft-delete (deactivate), true = reactivate.
 export const UpdateUserDto = z.object({
   role: UserRole.optional(),
   position: Position.nullable().optional(),
   department: Department.nullable().optional(),
+  active: z.boolean().optional(),
+  // Per-user permission override: an explicit set, or null to follow role
+  // defaults. Omit to leave unchanged. Ignored for SUPER_ADMIN (always full).
+  permissions: z.array(PermissionEnum).nullable().optional(),
 });
 export type UpdateUserDto = z.infer<typeof UpdateUserDto>;
 
