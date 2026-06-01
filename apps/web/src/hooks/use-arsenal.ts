@@ -18,6 +18,9 @@ export function useArsenalRuns() {
   return useQuery<ArsenalRunDto[], ApiError>({
     queryKey: queryKeys.arsenal.runs(),
     queryFn: ({ signal }) => api.arsenal.listRuns(signal),
+    // Keep the sequence + live feed in sync without a manual refresh.
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -40,6 +43,8 @@ export function useArsenalSettings() {
   return useQuery<ArsenalSettingsDto, ApiError>({
     queryKey: queryKeys.arsenal.settings(),
     queryFn: ({ signal }) => api.arsenal.getSettings(signal),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 

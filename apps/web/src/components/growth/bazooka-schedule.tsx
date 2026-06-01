@@ -3,11 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { AlarmClock } from 'lucide-react';
-import {
-  ARSENAL_STAGE_META,
-  BAZOOKA_TIMEZONES,
-  DEFAULT_BAZOOKA_TIMEZONE,
-} from '@evertrust/shared';
+import { BAZOOKA_TIMEZONES, DEFAULT_BAZOOKA_TIMEZONE } from '@evertrust/shared';
 import {
   useArsenalSettings,
   useUpdateArsenalSettings,
@@ -24,63 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { RunStageButton } from './run-stage-button';
 
-// All arsenal stages are runnable here. Per-campaign stages (Lead Satellite, Ammo
-// Forge) fire across all campaigns when run from this panel; to target a single
-// campaign, use its row in the campaign list instead.
-const ALL_STAGES = Object.values(ARSENAL_STAGE_META);
-
-export function ArsenalControls() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Arsenal controls</CardTitle>
-        <CardDescription>
-          Fire any arsenal stage now across all active campaigns, or set the daily
-          Reach Bazooka send time.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-6">
-        <DailySendSetting />
-        <div className="grid gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Run a stage now
-          </p>
-          <ul className="-mx-2 grid">
-            {ALL_STAGES.map((m) => (
-              <li
-                key={m.stage}
-                className="flex items-center justify-between gap-4 rounded-md px-2 py-2.5 transition-colors hover:bg-muted/50"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{m.label}</p>
-                  <p className="text-xs text-muted-foreground">{m.what}</p>
-                </div>
-                <Can permission="campaigns:write">
-                  <RunStageButton stage={m.stage} label="Run now" />
-                </Can>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// The ERP-editable daily Bazooka send. A `type="time"` input yields "HH:MM" and the
-// Select yields an IANA zone — exactly what the API validates + the scheduler arms
-// on save. The send fires at that wall-clock time in the chosen zone (DST-correct),
-// so the schedule is explicit rather than tied to the opaque server clock.
-function DailySendSetting() {
+// The ERP-editable daily Reach Bazooka send (lives under the sequence strip, beside
+// the Bazooka node it controls). A `type="time"` input yields "HH:MM" and the Select
+// yields an IANA zone — exactly what the API validates + the scheduler arms on save.
+// The send fires at that wall-clock time in the chosen zone (DST-correct), so the
+// schedule is explicit rather than tied to the opaque server clock.
+export function BazookaSchedule() {
   const settings = useArsenalSettings();
   const update = useUpdateArsenalSettings();
   const [time, setTime] = useState('');
@@ -110,7 +56,6 @@ function DailySendSetting() {
   }
 
   function turnOff() {
-    // Clear the time but keep the chosen zone, so re-enabling remembers it.
     update.mutate(
       { bazookaDailyAt: null, bazookaTimezone: timeZone },
       {
@@ -120,8 +65,6 @@ function DailySendSetting() {
     );
   }
 
-  // Save is enabled only when the time — or, for an active send, the zone — differs
-  // from what's stored. No-op saves are disabled; clearing is done via "Turn off".
   const timeDirty = (time || null) !== savedTime;
   const tzDirty = !!time && timeZone !== (savedTz ?? DEFAULT_BAZOOKA_TIMEZONE);
   const dirty = timeDirty || tzDirty;
@@ -150,8 +93,8 @@ function DailySendSetting() {
             )}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Send the daily outbound batch automatically at this time, in the
-            selected timezone. Runs independently of n8n&apos;s own schedule.
+            Fires step 3 (Reach Bazooka) automatically every day at this time, in
+            the selected timezone. Independent of n8n&apos;s own schedule.
           </p>
 
           <Can permission="campaigns:write">
@@ -221,7 +164,7 @@ function DailySendSetting() {
 
 // City label for the status badge: "Europe/Berlin" → "Berlin", "UTC" → "UTC". A null
 // zone is a legacy row still on the server clock — say so honestly.
-function zoneCity(tz: string | null): string {
+export function zoneCity(tz: string | null): string {
   if (!tz) return 'server time';
   return (tz.split('/').pop() ?? tz).replace(/_/g, ' ');
 }

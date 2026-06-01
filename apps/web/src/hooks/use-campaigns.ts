@@ -13,6 +13,9 @@ export function useCampaigns() {
   return useQuery<CampaignDto[], ApiError>({
     queryKey: queryKeys.campaigns.list(),
     queryFn: ({ signal }) => api.campaigns.list(signal),
+    // Sync the sequence with deploy outcomes without a manual refresh.
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { toast } from 'sonner';
-import { Play } from 'lucide-react';
+import { Loader2, Play } from 'lucide-react';
 import { ARSENAL_STAGE_META, type ArsenalStage } from '@evertrust/shared';
 import { useRunArsenalStage } from '@/hooks/use-arsenal';
 import { Button } from '@/components/ui/button';
@@ -44,8 +44,8 @@ export function RunStageButton({
         )
       }
     >
-      <Play />
-      {label ?? `Run ${meta.label}`}
+      {run.isPending ? <Loader2 className="animate-spin" /> : <Play />}
+      {run.isPending ? 'Dispatching…' : (label ?? `Run ${meta.label}`)}
     </Button>
   );
 }
