@@ -56,6 +56,8 @@ export const queryKeys = {
     all: ['arsenal'] as const,
     runs: () => ['arsenal', 'runs'] as const,
     settings: () => ['arsenal', 'settings'] as const,
+    // Phase 7+: live per-stage n8n execution status.
+    executions: () => ['arsenal', 'executions'] as const,
   },
 
   suppliers: {

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ArsenalExecutionsDto,
   ArsenalRunDto,
   ArsenalSettingsDto,
   ArsenalStage,
@@ -35,6 +36,19 @@ export function useRunArsenalStage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.arsenal.runs() });
     },
+  });
+}
+
+// Live per-stage n8n execution status (the real run-state poller). Polls ~10s.
+// configured=false when the n8n API isn't wired up — the strip then falls back to
+// its dispatch-based status.
+export function useArsenalExecutions() {
+  return useQuery<ArsenalExecutionsDto, ApiError>({
+    queryKey: queryKeys.arsenal.executions(),
+    queryFn: ({ signal }) => api.arsenal.executions(signal),
+    // Snappy live run-state: poll every 5s so RUNNING->END shows promptly.
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
   });
 }
 

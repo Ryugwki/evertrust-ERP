@@ -190,6 +190,66 @@ export class ArsenalService {
     return row;
   }
 
+  // Record an autonomous n8n run reported back via the callback (source N8N). This
+  // is the n8n→ERP writeback: n8n runs a stage on its own schedule / Drive poll and
+  // POSTs the FINAL outcome here so it shows in the per-campaign Live activity feed.
+  // The campaign (and its org) is resolved from the ERP campaignId OR the Drive
+  // folder id n8n knows natively; neither given = a global stage (org/campaign null).
+  // No JWT here — the controller gates this on the shared ingest token. Cross-org
+  // by design: the token is the trust boundary; the run is attributed to the
+  // campaign's own org. 404 if a given campaignId / driveFolderId matches nothing.
+  async recordCallback(input: {
+    stage: ArsenalStage;
+    status: 'SUCCESS' | 'ERROR';
+    campaignId?: string;
+    driveFolderId?: string;
+    detail?: string;
+  }): Promise<{ id: string }> {
+    let campaign: CampaignRow | null = null;
+    if (input.campaignId) {
+      const rows = await this.db
+        .select()
+        .from(schema.campaigns)
+        .where(eq(schema.campaigns.id, input.campaignId))
+        .limit(1);
+      campaign = rows[0] ?? null;
+      if (!campaign) {
+        throw new NotFoundException(
+          `No campaign for campaignId ${input.campaignId}`,
+        );
+      }
+    } else if (input.driveFolderId) {
+      const rows = await this.db
+        .select()
+        .from(schema.campaigns)
+        .where(eq(schema.campaigns.driveFolderId, input.driveFolderId))
+        .limit(1);
+      campaign = rows[0] ?? null;
+      if (!campaign) {
+        throw new NotFoundException(
+          `No campaign for driveFolderId ${input.driveFolderId}`,
+        );
+      }
+    }
+
+    const inserted = await this.db
+      .insert(schema.arsenalRuns)
+      .values({
+        organizationId: campaign?.organizationId ?? null,
+        stage: input.stage,
+        campaignId: campaign?.id ?? null,
+        source: 'N8N',
+        status: input.status,
+        detail: input.detail ?? null,
+        triggeredBy: null,
+      })
+      .returning();
+
+    const row = inserted[0];
+    if (!row) throw new Error('Failed to record arsenal callback');
+    return { id: row.id };
+  }
+
   // Hit the stage webhook with its configured method; map the outcome to a run
   // status + detail. GET webhooks just trigger the workflow (no body); POST ones
   // carry the JSON payload (campaign context).

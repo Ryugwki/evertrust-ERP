@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   AdminUserDto,
   ApprovalRequestDto,
+  ArsenalExecutionsDto,
   ArsenalRunDto,
   ArsenalSettingsDto,
   ArsenalStage,
@@ -431,6 +432,13 @@ export const api = {
     listRuns: (signal?: AbortSignal) =>
       request<ArsenalRunDto[]>('/arsenal/runs', {
         schema: ArsenalRunListDto,
+        signal,
+      }),
+
+    // Live per-stage n8n execution status (real run-state sync).
+    executions: (signal?: AbortSignal) =>
+      request<ArsenalExecutionsDto>('/arsenal/executions', {
+        schema: ArsenalExecutionsDto,
         signal,
       }),
 

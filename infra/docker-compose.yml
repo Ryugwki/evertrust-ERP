@@ -96,6 +96,11 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-latest}
       # Phase 5c — Hermes supplier RFQ webhook (blank = RFQ send disabled).
       N8N_HERMES_RFQ_WEBHOOK_URL: ${N8N_HERMES_RFQ_WEBHOOK_URL:-}
+      # n8n executions poller — real run-state sync (read-only). Blank = disabled.
+      N8N_API_URL: ${N8N_API_URL:-}
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      # n8n→ERP run callback shared secret (x-arsenal-token). Blank = endpoint off.
+      ARSENAL_INGEST_TOKEN: ${ARSENAL_INGEST_TOKEN:-}
     volumes:
       - uploads:/app/uploads
     depends_on:

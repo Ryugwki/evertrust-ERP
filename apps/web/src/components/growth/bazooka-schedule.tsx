@@ -93,8 +93,16 @@ export function BazookaSchedule() {
             )}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Fires step 3 (Reach Bazooka) automatically every day at this time, in
-            the selected timezone. Independent of n8n&apos;s own schedule.
+            An <em>extra</em> daily send fired by the ERP, independent of n8n.
+          </p>
+          <p className="mt-1.5 flex items-start gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+            <span aria-hidden>⚠</span>
+            <span>
+              Reach Bazooka already sends <strong>daily at 08:00</strong> on n8n&apos;s
+              own schedule. Turning this on sends a <strong>second</strong> batch —
+              leave it <strong>Off</strong> unless you&apos;ve disabled n8n&apos;s
+              schedule.
+            </span>
           </p>
 
           <Can permission="campaigns:write">

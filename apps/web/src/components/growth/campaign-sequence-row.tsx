@@ -52,17 +52,41 @@ const PREP_STAGES: ArsenalStage[] =
 export function CampaignSequenceRow({
   campaign: c,
   runs,
+  selected,
+  onSelect,
 }: {
   campaign: CampaignDto;
   runs: ArsenalRunDto[];
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const badge = STATUS_BADGE[c.status];
   const aim = aimStatus(c);
 
   return (
-    <div className="rounded-lg border bg-card p-3">
+    <div
+      className={cn(
+        'rounded-lg border bg-card p-3 transition-shadow',
+        selected && 'border-primary/40 ring-1 ring-primary/50',
+      )}
+    >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+        <div
+          role={onSelect ? 'button' : undefined}
+          tabIndex={onSelect ? 0 : undefined}
+          onClick={onSelect}
+          onKeyDown={(e) => {
+            if (onSelect && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              onSelect();
+            }
+          }}
+          title={onSelect ? "Show this campaign's activity below" : undefined}
+          className={cn(
+            'min-w-0 flex-1 rounded-md',
+            onSelect && '-m-1 cursor-pointer p-1 transition-colors hover:bg-muted/40',
+          )}
+        >
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium" title={c.project}>
               {c.name || c.project}
@@ -118,7 +142,7 @@ export function CampaignSequenceRow({
                     <RunStageButton
                       stage={stage}
                       campaignId={c.id}
-                      label={st.outcome === 'failed' ? 'Retry' : 'Run'}
+                      label={st.outcome === 'failed' ? 'Retry' : 'Run now'}
                       variant="ghost"
                       size="sm"
                     />

@@ -1,27 +1,38 @@
+import { timingSafeEqual } from 'node:crypto';
 import {
   BadRequestException,
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Put,
   Req,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   ArsenalStage,
+  type ArsenalCallbackResultDto,
+  type ArsenalExecutionsDto,
   type ArsenalRunDto,
   type ArsenalSettingsDto,
 } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/auth.types';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
+import { AppConfigService } from '../config/app-config.service';
 import { ArsenalService } from './arsenal.service';
 import { ArsenalScheduler } from './arsenal.scheduler';
+import { N8nExecutionsService } from './n8n-executions.service';
 import {
+  ArsenalCallbackBodyDto,
   RunArsenalBodyDto,
   UpdateArsenalSettingsBodyDto,
 } from './arsenal.dto';
@@ -34,6 +45,8 @@ export class ArsenalController {
   constructor(
     private readonly arsenal: ArsenalService,
     private readonly scheduler: ArsenalScheduler,
+    private readonly n8nExec: N8nExecutionsService,
+    private readonly config: AppConfigService,
   ) {}
 
   @RequirePermissions('campaigns:read')
@@ -47,6 +60,15 @@ export class ArsenalController {
   @Get('settings')
   getSettings(@OrgId() orgId: string): Promise<ArsenalSettingsDto> {
     return this.arsenal.getSettings(orgId) as unknown as Promise<ArsenalSettingsDto>;
+  }
+
+  // Live per-stage n8n execution status (RUNNING/SUCCESS/ERROR/IDLE) for the
+  // sequence strip's real run-state animation. Read-only + org-agnostic (one n8n
+  // instance). Returns { configured:false } when the n8n API isn't wired up.
+  @RequirePermissions('campaigns:read')
+  @Get('executions')
+  executions(): Promise<ArsenalExecutionsDto> {
+    return this.n8nExec.getStatuses() as unknown as Promise<ArsenalExecutionsDto>;
   }
 
   // Set/clear the daily Bazooka time (null = off). Persists AND re-arms the
@@ -79,6 +101,46 @@ export class ArsenalController {
       after: saved,
     });
     return saved as unknown as ArsenalSettingsDto;
+  }
+
+  // n8n→ERP run callback. PUBLIC (no JWT — n8n has no session); gated by the shared
+  // ARSENAL_INGEST_TOKEN in the `x-arsenal-token` header. n8n posts a stage's
+  // autonomous run outcome here so it lands in the per-campaign Live activity feed.
+  // 503 if the token isn't configured, 401 on a bad token, 404 if the named
+  // campaign / Drive folder is unknown. Returns the recorded run id.
+  @Public()
+  @Post('runs/callback')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async callback(
+    @Body() body: ArsenalCallbackBodyDto,
+    @Req() req: Request,
+  ): Promise<ArsenalCallbackResultDto> {
+    this.assertIngestToken(req);
+    const { id } = await this.arsenal.recordCallback({
+      stage: body.stage,
+      status: body.status,
+      campaignId: body.campaignId,
+      driveFolderId: body.driveFolderId,
+      detail: body.detail,
+    });
+    return { ok: true, id };
+  }
+
+  // Constant-time check of the ingest token. Blank token = feature off (503), so
+  // the route can't be hit until an operator deliberately mints a secret.
+  private assertIngestToken(req: Request): void {
+    const expected = this.config.get('ARSENAL_INGEST_TOKEN');
+    if (!expected) {
+      throw new ServiceUnavailableException(
+        'Arsenal run callback is not configured (set ARSENAL_INGEST_TOKEN).',
+      );
+    }
+    const provided = req.header('x-arsenal-token') ?? '';
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new UnauthorizedException('Invalid arsenal ingest token.');
+    }
   }
 
   @RequirePermissions('campaigns:write')

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { CheckCircle2, CircleDashed, Target, XCircle } from 'lucide-react';
 import type { CampaignStatus } from '@evertrust/shared';
 import { useCampaigns } from '@/hooks/use-campaigns';
@@ -27,6 +28,8 @@ export function GrowthEngineView() {
   const runs = useArsenalRuns();
   const runList = runs.data ?? [];
   const data = campaigns.data ?? [];
+  // Click a campaign to highlight it + auto-open its activity dropdown below.
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const ready = !campaigns.isLoading && !campaigns.isError;
   const countFor = (status: CampaignStatus) =>
     data.filter((c) => c.status === status).length;
@@ -97,7 +100,15 @@ export function GrowthEngineView() {
           ) : data.length > 0 ? (
             <div className="flex flex-col gap-3">
               {data.map((c) => (
-                <CampaignSequenceRow key={c.id} campaign={c} runs={runList} />
+                <CampaignSequenceRow
+                  key={c.id}
+                  campaign={c}
+                  runs={runList}
+                  selected={selectedCampaignId === c.id}
+                  onSelect={() =>
+                    setSelectedCampaignId((p) => (p === c.id ? null : c.id))
+                  }
+                />
               ))}
             </div>
           ) : (
@@ -110,7 +121,7 @@ export function GrowthEngineView() {
         </CardContent>
       </Card>
 
-      <ArsenalRunsCard />
+      <ArsenalRunsCard campaignId={selectedCampaignId} />
     </div>
   );
 }

@@ -893,10 +893,26 @@ export const RunArsenalDto = z.object({
 export type RunArsenalDto = z.infer<typeof RunArsenalDto>;
 
 // Mirrors the arsenal_run_source / arsenal_run_status pgEnums.
-export const ArsenalRunSource = z.enum(['MANUAL', 'SCHEDULED']);
+// MANUAL = a human pressed "Run now"; SCHEDULED = the ERP's daily scheduler;
+// N8N = an autonomous run that n8n reported back via the callback (it ran itself).
+export const ArsenalRunSource = z.enum(['MANUAL', 'SCHEDULED', 'N8N']);
 export type ArsenalRunSource = z.infer<typeof ArsenalRunSource>;
-export const ArsenalRunStatus = z.enum(['DISPATCHED', 'FAILED']);
+// DISPATCHED/FAILED = the ERP→n8n hand-off outcome (ERP-initiated runs). SUCCESS/
+// ERROR = the FINAL outcome of an autonomous n8n run, reported back via the
+// callback. The web treats DISPATCHED+SUCCESS as "ok" and FAILED+ERROR as "error".
+export const ArsenalRunStatus = z.enum([
+  'DISPATCHED',
+  'FAILED',
+  'SUCCESS',
+  'ERROR',
+]);
 export type ArsenalRunStatus = z.infer<typeof ArsenalRunStatus>;
+
+// True when a run status counts as a successful outcome (vs an error) — shared so
+// the API and web agree on how to colour/tag a run in the Live activity feed.
+export function isArsenalRunOk(status: ArsenalRunStatus): boolean {
+  return status === 'DISPATCHED' || status === 'SUCCESS';
+}
 
 // Read shape of an arsenal_runs row — the record of an ERP→n8n hand-off.
 export const ArsenalRunDto = z.object({
@@ -911,6 +927,62 @@ export const ArsenalRunDto = z.object({
   createdAt: z.string(),
 });
 export type ArsenalRunDto = z.infer<typeof ArsenalRunDto>;
+
+// Body for POST /arsenal/runs/callback — the n8n→ERP writeback. An n8n stage
+// workflow POSTs this at the END of an autonomous run so it appears in the
+// per-campaign Live activity feed (the executions poller shows RUNNING live; this
+// records the historical outcome). Identify the campaign by ERP `campaignId` OR by
+// its Google Drive folder id (`driveFolderId` — what n8n knows natively, since it
+// reads config from that folder); omit BOTH for a global stage. `stage` + `status`
+// are normalised to upper-case so n8n can send either case. Auth is a shared
+// ingest token in the `x-arsenal-token` header, NOT a JWT (n8n has no session).
+export const ArsenalCallbackDto = z.object({
+  stage: z.preprocess(
+    (v) => (typeof v === 'string' ? v.toUpperCase() : v),
+    ArsenalStage,
+  ),
+  status: z.preprocess(
+    (v) => (typeof v === 'string' ? v.toUpperCase() : v),
+    z.enum(['SUCCESS', 'ERROR']),
+  ),
+  campaignId: z.string().uuid().optional(),
+  driveFolderId: z.string().min(1).max(256).optional(),
+  detail: z.string().max(500).optional(),
+});
+export type ArsenalCallbackDto = z.infer<typeof ArsenalCallbackDto>;
+
+// Response of the callback — minimal ingest ack (the recorded run's id).
+export const ArsenalCallbackResultDto = z.object({
+  ok: z.literal(true),
+  id: z.string().uuid(),
+});
+export type ArsenalCallbackResultDto = z.infer<typeof ArsenalCallbackResultDto>;
+
+// Real n8n execution status for a stage (the executions poller). RUNNING = an n8n
+// execution is in progress; SUCCESS / ERROR = the latest finished one; IDLE = none.
+export const ArsenalExecutionStatus = z.enum([
+  'RUNNING',
+  'SUCCESS',
+  'ERROR',
+  'IDLE',
+]);
+export type ArsenalExecutionStatus = z.infer<typeof ArsenalExecutionStatus>;
+
+export const ArsenalExecutionDto = z.object({
+  stage: ArsenalStage,
+  status: ArsenalExecutionStatus,
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+});
+export type ArsenalExecutionDto = z.infer<typeof ArsenalExecutionDto>;
+
+// GET /arsenal/executions — live per-stage n8n run state. configured=false when the
+// n8n API isn't wired up (the web then falls back to its dispatch-based status).
+export const ArsenalExecutionsDto = z.object({
+  configured: z.boolean(),
+  stages: z.array(ArsenalExecutionDto),
+});
+export type ArsenalExecutionsDto = z.infer<typeof ArsenalExecutionsDto>;
 
 // "HH:MM" (24h) — shared so the API validates and the web input matches.
 export const DAILY_TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;

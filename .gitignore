@@ -23,6 +23,7 @@ docs/*.md
 !README.md
 !apps/web/DESIGN.md
 !docs/evertrust/SYSTEM-OVERVIEW.md
+!docs/evertrust/n8n-run-callback.md
 !docs/superpowers/specs/*.md
 
 # Brainstorming visual-companion scratch space

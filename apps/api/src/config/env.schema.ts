@@ -55,6 +55,20 @@ export const EnvSchema = z.object({
   // to suppliers. Blank = the RFQ trigger is disabled (the API rejects "send" with
   // a clear message), so the feature is safe to deploy before the webhook exists.
   N8N_HERMES_RFQ_WEBHOOK_URL: z.string().default(''),
+
+  // n8n executions poller — real RUNNING→END sync for the Growth Engine sequence.
+  // N8N_API_URL = the instance base (https://<host>); N8N_API_KEY = a read-only n8n
+  // public API key. Blank EITHER = the feature is OFF and the strip falls back to
+  // its dispatch-based status proxy. The ERP only ever READS executions.
+  N8N_API_URL: z.string().default(''),
+  N8N_API_KEY: z.string().default(''),
+
+  // n8n→ERP run callback shared secret. An n8n stage workflow posts its autonomous
+  // run outcome to POST /arsenal/runs/callback with this token in the
+  // `x-arsenal-token` header. Blank = the callback endpoint is DISABLED (returns
+  // 503), so the feature is safe to deploy before a token is minted. This is the
+  // ONLY auth on that public (JWT-less) route — treat it like a password.
+  ARSENAL_INGEST_TOKEN: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

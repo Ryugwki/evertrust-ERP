@@ -1,14 +1,24 @@
 import {
   ARSENAL_STAGE_META,
+  isArsenalRunOk,
   type ArsenalRunDto,
   type ArsenalStage,
   type CampaignDto,
 } from '@evertrust/shared';
 
 // The Arsenal as ONE ordered sequence (Growth Engine redesign). AIM is the campaign
-// launch (not an ArsenalStage); steps 1–2 are per-campaign, 3–5 are global. This is
-// the single source of the on-screen order + grouping. Labels/“what” for real stages
-// come from ARSENAL_STAGE_META so they never drift from the shared model.
+// launch (not an ArsenalStage); steps 1–2 are per-campaign, 3–5 are global.
+//
+// IMPORTANT (verified against the live n8n workflows): the arsenal is ALREADY
+// autonomous. It doesn't chain workflow-to-workflow — each stage self-runs:
+//   • AIM            — webhook only (the ERP/launch fires it)
+//   • Lead Satellite — Google Drive poll (every ~1 min) on new campaign folder
+//   • Ammo Forge     — Google Drive poll (every ~1 min) on new campaign folder
+//   • Reach Bazooka  — n8n cron, daily 08:00 (Europe/Berlin)
+//   • Reply Glock    — n8n cron, every 15 min
+//   • Sleeper        — n8n cron, daily 08:15
+// So launching AIM kicks the whole thing off on its own; the "Run now" buttons are
+// just optional manual nudges (they fire the same webhook early).
 
 export type StepKind = 'launch' | 'pair' | 'stage';
 export type StepScope = 'PER_CAMPAIGN' | 'GLOBAL';
@@ -21,6 +31,10 @@ export interface SequenceStep {
   // The arsenal stage(s) this step fires. Empty for AIM (handled by campaigns).
   stages: ArsenalStage[];
   what: string;
+  // How this step runs on its own in n8n (the real trigger). autonomous=false for
+  // AIM (it's the launch you fire); true for everything downstream.
+  autonomous: boolean;
+  auto: string;
 }
 
 export const ARSENAL_SEQUENCE: SequenceStep[] = [
@@ -31,6 +45,8 @@ export const ARSENAL_SEQUENCE: SequenceStep[] = [
     kind: 'launch',
     stages: [],
     what: 'Lock & Load — provision the campaign',
+    autonomous: false,
+    auto: 'Launches the sequence',
   },
   {
     key: 'PREP',
@@ -39,6 +55,8 @@ export const ARSENAL_SEQUENCE: SequenceStep[] = [
     kind: 'pair',
     stages: ['LEAD_SATELLITE', 'AMMO_FORGE'],
     what: 'Pull leads in, then write the outreach',
+    autonomous: true,
+    auto: 'Auto · ~1 min after launch',
   },
   {
     key: 'REACH_BAZOOKA',
@@ -47,6 +65,8 @@ export const ARSENAL_SEQUENCE: SequenceStep[] = [
     kind: 'stage',
     stages: ['REACH_BAZOOKA'],
     what: ARSENAL_STAGE_META.REACH_BAZOOKA.what,
+    autonomous: true,
+    auto: 'Auto · daily 08:00',
   },
   {
     key: 'REPLY_GLOCK',
@@ -55,6 +75,8 @@ export const ARSENAL_SEQUENCE: SequenceStep[] = [
     kind: 'stage',
     stages: ['REPLY_GLOCK'],
     what: ARSENAL_STAGE_META.REPLY_GLOCK.what,
+    autonomous: true,
+    auto: 'Auto · every 15 min',
   },
   {
     key: 'SLEEPER_GRENADE',
@@ -63,6 +85,8 @@ export const ARSENAL_SEQUENCE: SequenceStep[] = [
     kind: 'stage',
     stages: ['SLEEPER_GRENADE'],
     what: ARSENAL_STAGE_META.SLEEPER_GRENADE.what,
+    autonomous: true,
+    auto: 'Auto · daily 08:15',
   },
 ];
 
@@ -88,7 +112,7 @@ export function latestRunFor(
   );
   if (!r) return { outcome: 'idle', at: null };
   return {
-    outcome: r.status === 'DISPATCHED' ? 'ok' : 'failed',
+    outcome: isArsenalRunOk(r.status) ? 'ok' : 'failed',
     at: r.createdAt,
   };
 }
@@ -118,9 +142,9 @@ export const OUTCOME_LABEL: Record<RunOutcome, string> = {
 };
 
 // A node counts as "running" (animated) for a short window after a SUCCESSFUL
-// dispatch. We can't know when n8n actually finishes (no writeback), so this is a
-// dispatch-based proxy that auto-settles to a plain "Xm ago" — never a fabricated
-// completion. The ~15s poll re-renders nodes, so the animation clears on its own.
+// dispatch. Without real n8n execution state this is a dispatch-based proxy that
+// auto-settles to a plain "Xm ago" — never a fabricated completion. (The n8n
+// executions poller, when configured, replaces this with true RUNNING state.)
 export const RUNNING_WINDOW_MS = 90_000;
 
 export function isRunning(status: StageStatus): boolean {

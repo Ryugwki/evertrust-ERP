@@ -199,6 +199,109 @@ describe('ArsenalService — listRuns', () => {
   });
 });
 
+describe('ArsenalService — recordCallback (n8n→ERP writeback)', () => {
+  // WHY: an autonomous n8n run posts back by ERP campaignId → it's recorded as a
+  // source=N8N run tied to that campaign + its org (so the per-campaign feed shows
+  // it). This is the whole point of the writeback.
+  it('records a SUCCESS callback by campaignId, attributed to the campaign + org', async () => {
+    const { service, arsenalRuns } = seed();
+    const { id } = await service.recordCallback({
+      stage: 'LEAD_SATELLITE',
+      status: 'SUCCESS',
+      campaignId: C_A,
+      detail: '12 leads scraped',
+    });
+    const row = arsenalRuns.rows.find((r) => r.id === id);
+    expect(row).toMatchObject({
+      stage: 'LEAD_SATELLITE',
+      status: 'SUCCESS',
+      source: 'N8N',
+      campaignId: C_A,
+      organizationId: ORG_A,
+      detail: '12 leads scraped',
+      triggeredBy: null,
+    });
+  });
+
+  // WHY: n8n knows its Drive folder id natively (it reads config from it) but not
+  // the ERP UUID — resolving by driveFolderId is what makes the writeback practical
+  // for the autonomous Drive-poll stages.
+  it('resolves the campaign by driveFolderId when no campaignId is given', async () => {
+    const { service, arsenalRuns } = seed();
+    const { id } = await service.recordCallback({
+      stage: 'AMMO_FORGE',
+      status: 'ERROR',
+      driveFolderId: 'F1',
+      detail: 'OpenAI rate limited',
+    });
+    const row = arsenalRuns.rows.find((r) => r.id === id);
+    expect(row).toMatchObject({
+      stage: 'AMMO_FORGE',
+      status: 'ERROR',
+      source: 'N8N',
+      campaignId: C_A,
+      organizationId: ORG_A,
+    });
+  });
+
+  // WHY: a global stage (Bazooka/Glock/Sleeper) carries no campaign — the callback
+  // records it with null org + campaign, like the SCHEDULED global runs.
+  it('records a global callback (no campaign) with null org + campaign', async () => {
+    const { service, arsenalRuns } = seed();
+    const { id } = await service.recordCallback({
+      stage: 'REACH_BAZOOKA',
+      status: 'SUCCESS',
+    });
+    const row = arsenalRuns.rows.find((r) => r.id === id);
+    expect(row).toMatchObject({
+      stage: 'REACH_BAZOOKA',
+      status: 'SUCCESS',
+      source: 'N8N',
+      campaignId: null,
+      organizationId: null,
+    });
+  });
+
+  // WHY: an unknown campaignId / driveFolderId must 404 (not silently record an
+  // orphan run) — a mis-wired n8n workflow should fail loud, not pollute the feed.
+  it('404s an unknown campaignId and records nothing', async () => {
+    const { service, arsenalRuns } = seed();
+    await expect(
+      service.recordCallback({
+        stage: 'LEAD_SATELLITE',
+        status: 'SUCCESS',
+        campaignId: '99999999-9999-9999-9999-999999999999',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(arsenalRuns.rows).toHaveLength(0);
+  });
+
+  it('404s an unknown driveFolderId and records nothing', async () => {
+    const { service, arsenalRuns } = seed();
+    await expect(
+      service.recordCallback({
+        stage: 'AMMO_FORGE',
+        status: 'SUCCESS',
+        driveFolderId: 'does-not-exist',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(arsenalRuns.rows).toHaveLength(0);
+  });
+
+  // WHY: a callback-recorded run is visible to the campaign's org in listRuns,
+  // proving it reaches the per-campaign Live activity feed end-to-end.
+  it('surfaces callback runs to the org via listRuns', async () => {
+    const { service } = seed();
+    await service.recordCallback({
+      stage: 'LEAD_SATELLITE',
+      status: 'SUCCESS',
+      campaignId: C_A,
+    });
+    const runs = await service.listRuns(ORG_A);
+    expect(runs.some((r) => r.source === 'N8N' && r.campaignId === C_A)).toBe(true);
+  });
+});
+
 describe('ArsenalService — settings (editable daily time + timezone)', () => {
   // WHY: the daily Bazooka time + zone are ERP-editable settings, not env config.
   // They default off, upsert in place, and are org-scoped.
