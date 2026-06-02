@@ -9,7 +9,7 @@ import { AppConfigService } from '../config/app-config.service';
 // Stage -> n8n workflow id (the live REACH ARSENAL ids, verified by the read-only
 // audit). AIM is excluded — it's the launch, not an arsenal stage; its status comes
 // from the campaign's deploy state, not executions.
-const STAGE_WORKFLOW_ID: Record<ArsenalStage, string> = {
+export const STAGE_WORKFLOW_ID: Record<ArsenalStage, string> = {
   LEAD_SATELLITE: 'fvilklqj7XAOLlLL',
   AMMO_FORGE: 'n2kA3j6uupUAe42A',
   REACH_BAZOOKA: 'qVvT6WLTYxtfubUg',
@@ -20,10 +20,13 @@ const STAGE_WORKFLOW_ID: Record<ArsenalStage, string> = {
 // Minimal shape of an n8n public-API execution (GET /api/v1/executions).
 interface N8nExecution {
   id: string;
-  status?: string; // 'success' | 'error' | 'running' | 'waiting' | ...
+  status?: string; // 'success' | 'error' | 'running' | 'waiting' | 'crashed' | ...
   finished?: boolean;
   startedAt?: string | null;
   stoppedAt?: string | null;
+  // 'trigger' | 'webhook' | 'manual' | 'error' | ... — 'error' means this is the
+  // workflow's error-handler run (a real run failed and triggered it).
+  mode?: string;
 }
 
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -60,9 +63,13 @@ export class N8nExecutionsService {
     return { configured: true, stages };
   }
 
-  // Latest execution status for one stage's workflow. Newest-first; a RUNNING exec
-  // (status 'running' / not finished / no stoppedAt) wins, else the latest finished
-  // maps to SUCCESS/ERROR, else IDLE.
+  // Latest execution status for one stage's workflow. Newest-first. An execution is
+  // ACTIVELY running only if it has not stopped yet (no stoppedAt) AND its status is
+  // running/waiting/new — n8n sets finished:false on ERRORED executions too, so
+  // `finished` alone is NOT a running signal (an errored run is stopped, not live).
+  // If a genuinely-active exec exists -> RUNNING; else the newest decides
+  // SUCCESS/ERROR (mode 'error' = the workflow's error-handler fired -> a real run
+  // failed -> ERROR); none -> IDLE.
   private async statusFor(
     base: string,
     key: string,
@@ -93,25 +100,32 @@ export class N8nExecutionsService {
       const execs = json.data ?? [];
       if (execs.length === 0) return idle;
 
-      const running = execs.find(
+      // Actively running = hasn't stopped AND is in a live status. A present
+      // stoppedAt means it's done (success OR error) — never "running".
+      const active = execs.find(
         (e) =>
-          e.status === 'running' ||
-          e.status === 'waiting' ||
-          e.finished === false ||
-          (!e.stoppedAt && !!e.startedAt),
+          !e.stoppedAt &&
+          (e.status === 'running' ||
+            e.status === 'waiting' ||
+            e.status === 'new' ||
+            e.status === undefined),
       );
-      if (running) {
+      if (active) {
         return {
           stage,
           status: 'RUNNING',
-          startedAt: running.startedAt ?? null,
+          startedAt: active.startedAt ?? null,
           finishedAt: null,
         };
       }
       const latest = execs[0]!;
+      const errored =
+        latest.status === 'error' ||
+        latest.status === 'crashed' ||
+        latest.mode === 'error';
       return {
         stage,
-        status: latest.status === 'error' ? 'ERROR' : 'SUCCESS',
+        status: errored ? 'ERROR' : 'SUCCESS',
         startedAt: latest.startedAt ?? null,
         finishedAt: latest.stoppedAt ?? null,
       };
