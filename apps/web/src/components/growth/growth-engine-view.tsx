@@ -1,35 +1,22 @@
 'use client';
 
-import { useState } from 'react';
 import { CheckCircle2, CircleDashed, Target, XCircle } from 'lucide-react';
 import type { CampaignStatus } from '@evertrust/shared';
 import { useCampaigns } from '@/hooks/use-campaigns';
-import { useArsenalRuns } from '@/hooks/use-arsenal';
 import { Can } from '@/components/auth/can';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common/page-header';
 import { StatTile } from '@/components/common/stat-tile';
 import { AimLaunchDialog } from './aim-launch-dialog';
 import { SequenceStrip } from './sequence-strip';
-import { CampaignSequenceRow } from './campaign-sequence-row';
-import { ArsenalRunsCard } from './arsenal-runs-card';
+import { CampaignBoard } from './campaign-board';
 
 // Growth Engine home: the Arsenal as one systemized, synced sequence. AIM launch +
-// deploy KPIs → the sequence strip (global stages + schedule) → each campaign's
-// per-campaign slice of the sequence → the live run feed.
+// deploy KPIs → the sequence strip (global stages + schedule) → the campaign board
+// (each campaign's pipeline + its live activity, merged into one expandable list).
 export function GrowthEngineView() {
   const campaigns = useCampaigns();
-  const runs = useArsenalRuns();
-  const runList = runs.data ?? [];
   const data = campaigns.data ?? [];
-  // Click a campaign to highlight it + auto-open its activity dropdown below.
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const ready = !campaigns.isLoading && !campaigns.isError;
   const countFor = (status: CampaignStatus) =>
     data.filter((c) => c.status === status).length;
@@ -85,43 +72,8 @@ export function GrowthEngineView() {
       {/* The whole arsenal as one ordered sequence + the daily schedule. */}
       <SequenceStrip />
 
-      {/* Each campaign's per-campaign slice (AIM → prep pair), live from runs. */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Campaigns</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {campaigns.isLoading ? (
-            <Skeleton className="h-20 w-full" />
-          ) : campaigns.isError ? (
-            <p className="text-sm text-destructive">
-              Could not load campaigns: {campaigns.error.message}
-            </p>
-          ) : data.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              {data.map((c) => (
-                <CampaignSequenceRow
-                  key={c.id}
-                  campaign={c}
-                  runs={runList}
-                  selected={selectedCampaignId === c.id}
-                  onSelect={() =>
-                    setSelectedCampaignId((p) => (p === c.id ? null : c.id))
-                  }
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              You haven&apos;t aimed yet — click{' '}
-              <span className="font-medium">AIM</span> to launch your first
-              campaign.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <ArsenalRunsCard campaignId={selectedCampaignId} />
+      {/* Each campaign's pipeline + its live activity, merged into one board. */}
+      <CampaignBoard />
     </div>
   );
 }
