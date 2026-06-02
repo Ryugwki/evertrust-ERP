@@ -69,6 +69,13 @@ export const EnvSchema = z.object({
   // 503), so the feature is safe to deploy before a token is minted. This is the
   // ONLY auth on that public (JWT-less) route — treat it like a password.
   ARSENAL_INGEST_TOKEN: z.string().default(''),
+
+  // Key Account hot-leads webhooks. PROVISION creates a campaign's hot_leads sheet
+  // (POST {folderId}); PIPELINE intakes Interested leads + graduates customers
+  // (POST {folderId}). Blank = that ERP action is disabled. Hot-lead DATA is read
+  // via the executions backfill (N8N_API_URL/KEY), not these.
+  N8N_PROVISION_HOT_LEADS_WEBHOOK_URL: z.string().default(''),
+  N8N_HOT_LEADS_PIPELINE_WEBHOOK_URL: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

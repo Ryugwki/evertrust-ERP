@@ -2,10 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ArsenalBackfillResultDto,
   ArsenalExecutionsDto,
   ArsenalRunDto,
   ArsenalSettingsDto,
   ArsenalStage,
+  MarketingReportDto,
+  MarketingReportPeriod,
   UpdateArsenalSettingsDto,
 } from '@evertrust/shared';
 import { ApiError, api } from '@/lib/api';
@@ -49,6 +52,33 @@ export function useArsenalExecutions() {
     // Snappy live run-state: poll every 5s so RUNNING->END shows promptly.
     refetchInterval: 5_000,
     refetchOnWindowFocus: true,
+  });
+}
+
+// The Marketing report for a period (day/week/month), optionally scoped to one
+// campaign. Polls ~30s so the report reflects new runs + n8n metric callbacks
+// without a manual refresh.
+export function useMarketingReport(
+  period: MarketingReportPeriod,
+  campaignId?: string | null,
+) {
+  return useQuery<MarketingReportDto, ApiError>({
+    queryKey: queryKeys.arsenal.report(period, campaignId),
+    queryFn: ({ signal }) => api.arsenal.report(period, campaignId, signal),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+// Backfill the report from n8n execution history. On success, invalidates all
+// arsenal queries so the report + feed pick up the imported runs/metrics.
+export function useArsenalBackfill() {
+  const queryClient = useQueryClient();
+  return useMutation<ArsenalBackfillResultDto, ApiError, void>({
+    mutationFn: () => api.arsenal.backfill(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.arsenal.all });
+    },
   });
 }
 

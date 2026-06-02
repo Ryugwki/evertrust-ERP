@@ -1,5 +1,6 @@
 import {
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -69,6 +70,13 @@ export const arsenalRuns = pgTable(
     status: arsenalRunStatusEnum('status').notNull(),
     // Human-readable outcome detail (e.g. "HTTP 200" or the failure reason).
     detail: text('detail'),
+    // Optional per-run funnel counts an n8n stage reported via the callback
+    // (e.g. { emailsSent: 40 }). Null for ERP-dispatched / pre-Phase-2 runs. The
+    // Marketing report sums these per period.
+    metrics: jsonb('metrics').$type<Record<string, number>>(),
+    // The n8n execution this row was imported from (backfill), for idempotent
+    // re-syncs. Null for ERP-dispatched / callback-reported runs.
+    n8nExecutionId: text('n8n_execution_id'),
     triggeredBy: uuid('triggered_by').references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -78,6 +86,7 @@ export const arsenalRuns = pgTable(
     index('arsenal_runs_organization_id_idx').on(t.organizationId),
     index('arsenal_runs_campaign_id_idx').on(t.campaignId),
     index('arsenal_runs_stage_idx').on(t.stage),
+    uniqueIndex('arsenal_runs_n8n_execution_id_uq').on(t.n8nExecutionId),
   ],
 );
 

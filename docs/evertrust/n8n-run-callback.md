@@ -38,6 +38,17 @@ Header:  Content-Type: application/json
 | `campaignId`   | no*      | The ERP campaign UUID, if the workflow knows it. |
 | `driveFolderId`| no*      | The Google Drive folder id of the campaign — what n8n knows natively. The ERP resolves the campaign (and its org) from this. |
 | `detail`       | no       | Short free-text (≤500 chars), e.g. `"12 leads scraped"` or an error message. |
+| `metrics`      | no       | Flat map of funnel counts (≤20 keys, finite ≥0), e.g. `{ "emailsSent": 40 }`. Powers the **Marketing report** funnel/per-stage numbers. |
+
+**`metrics` keys** (send what the stage knows): `leadsFound` (Lead Satellite) ·
+`templatesForged` (Ammo Forge) · `emailsSent` (Reach Bazooka) · `repliesHandled`,
+`meetingsBooked` (Reply Glock) · `leadsSwept` (Sleeper Grenade). Until a stage
+sends these, the Marketing report shows that figure as "awaiting n8n".
+
+To send `metrics` from the HTTP Request node, add a body field named `metrics`
+whose value is an expression returning an object, e.g.
+`={{ { emailsSent: $json.sentCount } }}` (keypair body), or switch the node to
+**JSON body** mode and include `"metrics"` there.
 
 \* **Per-campaign stages** (Lead Satellite, Ammo Forge) should send **either**
 `campaignId` **or** `driveFolderId` so the run attaches to that campaign.

@@ -138,3 +138,18 @@ export const arsenalRunStatusEnum = pgEnum('arsenal_run_status', [
 // (n8n emails suppliers async); FAILED = the ERP could not reach it / non-2xx.
 // Supplier replies land as SUPPLIER_QUOTE price observations, not on this row.
 export const rfqStatusEnum = pgEnum('rfq_status', ['DISPATCHED', 'FAILED']);
+
+// Key Account hot-lead pipeline stage. Mirrors the n8n hot_leads vocabulary:
+// INTERESTED / MEETING_SCHEDULED (the "Hot Reason"), CUSTOMER (graduated), and
+// ARCHIVED (dismissed). The board columns are INTERESTED -> MEETING_SCHEDULED ->
+// CUSTOMER.
+export const leadStageEnum = pgEnum('lead_stage', [
+  'INTERESTED',
+  'MEETING_SCHEDULED',
+  'CUSTOMER',
+  'ARCHIVED',
+]);
+
+// Where a lead came from: N8N = imported from the Hot Leads Pipeline; MANUAL =
+// added by hand in the ERP.
+export const leadSourceEnum = pgEnum('lead_source', ['N8N', 'MANUAL']);

@@ -58,6 +58,16 @@ export const queryKeys = {
     settings: () => ['arsenal', 'settings'] as const,
     // Phase 7+: live per-stage n8n execution status.
     executions: () => ['arsenal', 'executions'] as const,
+    // Marketing report, scoped by period (day/week/month) + optional campaign.
+    report: (period: string, campaignId?: string | null) =>
+      ['arsenal', 'report', period, campaignId ?? 'all'] as const,
+  },
+
+  // Key Account: hot-lead CRM.
+  leads: {
+    all: ['leads'] as const,
+    list: (stage?: string | null, campaignId?: string | null) =>
+      ['leads', 'list', stage ?? 'all', campaignId ?? 'all'] as const,
   },
 
   suppliers: {

@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
 import {
   BadRequestException,
   Body,
@@ -9,6 +10,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -16,10 +18,13 @@ import {
 import type { Request } from 'express';
 import {
   ArsenalStage,
+  MarketingReportPeriod,
+  type ArsenalBackfillResultDto,
   type ArsenalCallbackResultDto,
   type ArsenalExecutionsDto,
   type ArsenalRunDto,
   type ArsenalSettingsDto,
+  type MarketingReportDto,
 } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -31,6 +36,7 @@ import { AppConfigService } from '../config/app-config.service';
 import { ArsenalService } from './arsenal.service';
 import { ArsenalScheduler } from './arsenal.scheduler';
 import { N8nExecutionsService } from './n8n-executions.service';
+import { N8nBackfillService } from './n8n-backfill.service';
 import {
   ArsenalCallbackBodyDto,
   RunArsenalBodyDto,
@@ -46,6 +52,7 @@ export class ArsenalController {
     private readonly arsenal: ArsenalService,
     private readonly scheduler: ArsenalScheduler,
     private readonly n8nExec: N8nExecutionsService,
+    private readonly backfill: N8nBackfillService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -69,6 +76,43 @@ export class ArsenalController {
   @Get('executions')
   executions(): Promise<ArsenalExecutionsDto> {
     return this.n8nExec.getStatuses() as unknown as Promise<ArsenalExecutionsDto>;
+  }
+
+  // The Marketing report — Growth-Engine sequence aggregated by period. `period`
+  // defaults to 'week' and falls back to 'week' on an unknown value (lenient query).
+  @RequirePermissions('campaigns:read')
+  @Get('report')
+  report(
+    @OrgId() orgId: string,
+    @Query('period') periodParam?: string,
+    @Query('campaignId') campaignIdParam?: string,
+  ): Promise<MarketingReportDto> {
+    const parsed = MarketingReportPeriod.safeParse(periodParam ?? 'week');
+    const period = parsed.success ? parsed.data : 'week';
+    // Optional campaign scope; ignore a malformed id (treat as org-wide).
+    const campaignId = z.string().uuid().safeParse(campaignIdParam).success
+      ? campaignIdParam
+      : undefined;
+    return this.arsenal.getReport(orgId, period, campaignId) as unknown as Promise<MarketingReportDto>;
+  }
+
+  // Backfill the report's funnel from n8n's execution history — imports recent
+  // autonomous runs (with metrics read from execution data) as arsenal_runs.
+  // Idempotent (deduped by execution id). campaigns:write — it writes run rows.
+  @RequirePermissions('campaigns:write')
+  @Post('backfill')
+  async runBackfill(
+    @OrgId() orgId: string,
+    @Req() req: Request,
+  ): Promise<ArsenalBackfillResultDto> {
+    const result = await this.backfill.sync(orgId);
+    setAuditContext(req, {
+      entity: 'arsenal_runs',
+      entityId: orgId,
+      action: 'BACKFILL',
+      after: result,
+    });
+    return result;
   }
 
   // Set/clear the daily Bazooka time (null = off). Persists AND re-arms the
@@ -122,6 +166,7 @@ export class ArsenalController {
       campaignId: body.campaignId,
       driveFolderId: body.driveFolderId,
       detail: body.detail,
+      metrics: body.metrics,
     });
     return { ok: true, id };
   }

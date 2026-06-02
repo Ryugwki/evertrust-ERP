@@ -6,7 +6,14 @@ import { AUTH_COOKIE } from '@/lib/env';
 // here. Everything NOT matched is public — notably `/` (the marketing landing)
 // and `/login`. There is intentionally no `/` -> `/dashboard` redirect: the
 // landing page is public for everyone, signed in or not.
-const PROTECTED_PREFIXES = ['/dashboard', '/tenders', '/suppliers', '/customers'];
+const PROTECTED_PREFIXES = [
+  '/dashboard',
+  '/tenders',
+  '/suppliers',
+  '/customers',
+  '/marketing',
+  '/key-account',
+];
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;

@@ -7,6 +7,7 @@ import { ArsenalController } from '../src/arsenal/arsenal.controller';
 import type { ArsenalService } from '../src/arsenal/arsenal.service';
 import type { ArsenalScheduler } from '../src/arsenal/arsenal.scheduler';
 import type { N8nExecutionsService } from '../src/arsenal/n8n-executions.service';
+import type { N8nBackfillService } from '../src/arsenal/n8n-backfill.service';
 import type { AppConfigService } from '../src/config/app-config.service';
 import type { ArsenalCallbackBodyDto } from '../src/arsenal/arsenal.dto';
 
@@ -21,11 +22,18 @@ function makeController(token: string) {
   const arsenal = { recordCallback } as unknown as ArsenalService;
   const scheduler = {} as ArsenalScheduler;
   const n8nExec = {} as N8nExecutionsService;
+  const backfill = {} as N8nBackfillService;
   const config = {
     get: (k: string) => (k === 'ARSENAL_INGEST_TOKEN' ? token : ''),
   } as unknown as AppConfigService;
   return {
-    controller: new ArsenalController(arsenal, scheduler, n8nExec, config),
+    controller: new ArsenalController(
+      arsenal,
+      scheduler,
+      n8nExec,
+      backfill,
+      config,
+    ),
     recordCallback,
   };
 }

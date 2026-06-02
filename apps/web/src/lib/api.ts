@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   AdminUserDto,
   ApprovalRequestDto,
+  ArsenalBackfillResultDto,
   ArsenalExecutionsDto,
   ArsenalRunDto,
   ArsenalSettingsDto,
@@ -25,6 +26,8 @@ import {
   ListTendersQuery,
   LoginDto,
   LoginResponseDto,
+  MarketingReportDto,
+  MarketingReportPeriod,
   MeDto,
   PriceAssistResultDto,
   PriceObservationDto,
@@ -48,6 +51,13 @@ import {
   UploadDocumentDto,
   UpsertPricingDto,
   UserListItemDto,
+  CreateLeadDto,
+  UpdateLeadDto,
+  LeadDto,
+  LeadBackfillResultDto,
+  ProvisionHotLeadsResultDto,
+  RunHotLeadsPipelineResultDto,
+  type LeadStage,
 } from '@evertrust/shared';
 import { API_URL } from './env';
 
@@ -72,6 +82,7 @@ const TenderDeadlineRiskListDto = z.array(TenderDeadlineRiskDto);
 const CampaignListDto = z.array(CampaignDto);
 // Arsenal: recent ERP→n8n trigger runs.
 const ArsenalRunListDto = z.array(ArsenalRunDto);
+const LeadListDto = z.array(LeadDto);
 // Phase 5c: the RFQs dispatched for a tender.
 const RfqListDto = z.array(RfqDto);
 // GET /tenders/:id/assignment returns the ACTIVE assignment or null.
@@ -442,6 +453,26 @@ export const api = {
         signal,
       }),
 
+    // Marketing report — Growth-Engine sequence aggregated by period, optionally
+    // scoped to one campaign.
+    report: (
+      period: z.infer<typeof MarketingReportPeriod>,
+      campaignId?: string | null,
+      signal?: AbortSignal,
+    ) =>
+      request<MarketingReportDto>(
+        `/arsenal/report?period=${period}${campaignId ? `&campaignId=${campaignId}` : ''}`,
+        { schema: MarketingReportDto, signal },
+      ),
+
+    // Backfill the report from n8n execution history (imports recent runs +
+    // metrics). Idempotent server-side. Returns an import summary.
+    backfill: () =>
+      request<ArsenalBackfillResultDto>('/arsenal/backfill', {
+        method: 'POST',
+        schema: ArsenalBackfillResultDto,
+      }),
+
     // Fire a stage's n8n webhook (records + returns the run; status DISPATCHED |
     // FAILED). campaignId is required for PER_CAMPAIGN stages.
     run: (stage: ArsenalStage, input: z.infer<typeof RunArsenalDto>) =>
@@ -463,6 +494,63 @@ export const api = {
         method: 'PUT',
         body: UpdateArsenalSettingsDto.parse(input),
         schema: ArsenalSettingsDto,
+      }),
+  },
+
+  // ---- Key Account: hot-lead CRM ----
+  leads: {
+    list: (
+      params: { stage?: LeadStage; campaignId?: string } = {},
+      signal?: AbortSignal,
+    ) => {
+      const q = new URLSearchParams();
+      if (params.stage) q.set('stage', params.stage);
+      if (params.campaignId) q.set('campaignId', params.campaignId);
+      const qs = q.toString();
+      return request<LeadDto[]>(`/leads${qs ? `?${qs}` : ''}`, {
+        schema: LeadListDto,
+        signal,
+      });
+    },
+
+    create: (input: z.infer<typeof CreateLeadDto>) =>
+      request<LeadDto>('/leads', {
+        method: 'POST',
+        body: CreateLeadDto.parse(input),
+        schema: LeadDto,
+      }),
+
+    update: (id: string, input: z.infer<typeof UpdateLeadDto>) =>
+      request<LeadDto>(`/leads/${id}`, {
+        method: 'PATCH',
+        body: UpdateLeadDto.parse(input),
+        schema: LeadDto,
+      }),
+
+    convert: (id: string) =>
+      request<LeadDto>(`/leads/${id}/convert`, {
+        method: 'POST',
+        schema: LeadDto,
+      }),
+
+    backfill: () =>
+      request<LeadBackfillResultDto>('/leads/backfill', {
+        method: 'POST',
+        schema: LeadBackfillResultDto,
+      }),
+
+    provision: (campaignId: string) =>
+      request<ProvisionHotLeadsResultDto>('/leads/provision', {
+        method: 'POST',
+        body: { campaignId },
+        schema: ProvisionHotLeadsResultDto,
+      }),
+
+    runPipeline: (campaignId?: string) =>
+      request<RunHotLeadsPipelineResultDto>('/leads/run-pipeline', {
+        method: 'POST',
+        body: campaignId ? { campaignId } : {},
+        schema: RunHotLeadsPipelineResultDto,
       }),
   },
 

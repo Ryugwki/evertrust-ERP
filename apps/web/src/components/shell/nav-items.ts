@@ -1,9 +1,8 @@
 import {
-  Building2,
+  Contact,
   Crosshair,
-  FileText,
   LayoutDashboard,
-  Truck,
+  LineChart,
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -28,9 +27,8 @@ export type NavItem = {
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: null },
-  { href: '/tenders', label: 'Tenders', icon: FileText, permission: 'tenders:read', group: 'Operations' },
-  { href: '/suppliers', label: 'Suppliers', icon: Truck, permission: 'suppliers:read', group: 'Operations' },
-  { href: '/customers', label: 'Customers', icon: Building2, permission: 'customers:read', group: 'Operations' },
   { href: '/growth-engine', label: 'Growth Engine', icon: Crosshair, permission: 'campaigns:read', group: 'Acquisition' },
+  { href: '/marketing', label: 'Marketing', icon: LineChart, permission: 'campaigns:read', group: 'Acquisition' },
+  { href: '/key-account', label: 'Key Account', icon: Contact, permission: 'campaigns:read', group: 'Acquisition' },
   { href: '/users', label: 'Users', icon: Users, permission: 'users:manage', group: 'Administration' },
 ];

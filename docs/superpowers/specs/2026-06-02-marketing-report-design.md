@@ -39,7 +39,7 @@ The **funnel** reads `leadsFound → emailsSent → repliesHandled → meetingsB
 - `funnel`: `{ leadsFound|null, emailsSent|null, repliesHandled|null, meetingsBooked|null }` (null = no metric reported in window).
 - `stages: MarketingStageReportDto[]` — one per ArsenalStage: `{ stage, runs, ok, errors, successRate, primaryMetricKey, primaryMetricValue|null, trend: number[] }` (trend = runs per bucket aligned to `buckets`).
 
-Windows by period: day → last 14 days; week → last 8 ISO weeks; month → last 6 months. Aggregation is in-process (low volume): fetch the org's runs (+ global null-org runs) in the window, bucket by period, group by stage, sum metrics. `campaignsLaunched` = campaigns with `deployedAt` (fallback `createdAt`) in the window.
+Rolling windows by period: day → last 24h (hourly bars); week → last 7 days; month → last 30 days (daily bars). Aggregation is in-process (low volume): fetch the org's runs (+ global null-org runs) in the window, bucket by period, group by stage, sum metrics. `campaignsLaunched` = campaigns with `deployedAt` (fallback `createdAt`) in the window.
 
 Outcome split reuses `isArsenalRunOk` (DISPATCHED/SUCCESS = ok; FAILED/ERROR = error).
 

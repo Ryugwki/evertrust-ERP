@@ -14,6 +14,7 @@ import { SubmissionModule } from './submission/submission.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ArsenalModule } from './arsenal/arsenal.module';
+import { LeadsModule } from './leads/leads.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { CustomersModule } from './customers/customers.module';
@@ -36,6 +37,7 @@ import { AuditInterceptor } from './common/audit.interceptor';
     ApprovalsModule,
     CampaignsModule,
     ArsenalModule,
+    LeadsModule,
     DocumentsModule,
     SuppliersModule,
     CustomersModule,

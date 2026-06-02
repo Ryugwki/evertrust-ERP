@@ -101,6 +101,9 @@ services:
       N8N_API_KEY: ${N8N_API_KEY:-}
       # n8n→ERP run callback shared secret (x-arsenal-token). Blank = endpoint off.
       ARSENAL_INGEST_TOKEN: ${ARSENAL_INGEST_TOKEN:-}
+      # Key Account hot-leads webhooks (blank = that action disabled).
+      N8N_PROVISION_HOT_LEADS_WEBHOOK_URL: ${N8N_PROVISION_HOT_LEADS_WEBHOOK_URL:-}
+      N8N_HOT_LEADS_PIPELINE_WEBHOOK_URL: ${N8N_HOT_LEADS_PIPELINE_WEBHOOK_URL:-}
     volumes:
       - uploads:/app/uploads
     depends_on:
