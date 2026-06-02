@@ -3,7 +3,11 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Crosshair } from 'lucide-react';
-import type { CreateCampaignDto } from '@evertrust/shared';
+import {
+  type CreateCampaignDto,
+  type CampaignRegion,
+  CAMPAIGN_REGIONS,
+} from '@evertrust/shared';
 import { useCreateCampaign } from '@/hooks/use-campaigns';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +21,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // The 9 AIM inputs (matches the reference Growth-Engine form). `name` is the only
 // optional one. Keyed by the CreateCampaignDto field so the payload is built
@@ -26,6 +37,9 @@ type Field = {
   label: string;
   placeholder: string;
   required: boolean;
+  // When set, the field renders as a dropdown of these fixed choices instead of
+  // a free-text input (e.g. the location zone).
+  options?: readonly string[];
 };
 
 const FIELDS: readonly Field[] = [
@@ -33,7 +47,7 @@ const FIELDS: readonly Field[] = [
   { key: 'niche', label: 'Niche', placeholder: 'LED', required: true },
   { key: 'target', label: 'Target', placeholder: 'EPC, Installer, Operator…', required: true },
   { key: 'country', label: 'Country', placeholder: 'Germany', required: true },
-  { key: 'state', label: 'State / City', placeholder: 'Berlin', required: true },
+  { key: 'state', label: 'State / City', placeholder: 'Select a region', required: true, options: CAMPAIGN_REGIONS },
   { key: 'project', label: 'Project', placeholder: 'LED Retrofit Berlin 2026', required: true },
   { key: 'gmailLabel', label: 'Gmail label', placeholder: 'LED-Berlin-2026', required: true },
   { key: 'salesCalendarId', label: 'Sales calendar ID', placeholder: 'info@evertrust-germany.de', required: true },
@@ -62,7 +76,9 @@ export function AimLaunchDialog() {
       niche: val('niche'),
       target: val('target'),
       country: val('country'),
-      state: val('state'),
+      // The Select only ever emits a valid region (and required-field check above
+      // guarantees it's set); server-side zod re-validates on the wire.
+      state: val('state') as CampaignRegion,
       project: val('project'),
       gmailLabel: val('gmailLabel'),
       salesCalendarId: val('salesCalendarId'),
@@ -110,13 +126,31 @@ export function AimLaunchDialog() {
                   <span className="text-muted-foreground"> (optional)</span>
                 )}
               </Label>
-              <Input
-                id={`aim-${f.key}`}
-                value={form[f.key] ?? ''}
-                placeholder={f.placeholder}
-                maxLength={f.key === 'name' ? 60 : 200}
-                onChange={(e) => set(f.key, e.target.value)}
-              />
+              {f.options ? (
+                <Select
+                  value={form[f.key] ?? ''}
+                  onValueChange={(v) => set(f.key, v)}
+                >
+                  <SelectTrigger id={`aim-${f.key}`} className="w-full">
+                    <SelectValue placeholder={f.placeholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {f.options.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id={`aim-${f.key}`}
+                  value={form[f.key] ?? ''}
+                  placeholder={f.placeholder}
+                  maxLength={f.key === 'name' ? 60 : 200}
+                  onChange={(e) => set(f.key, e.target.value)}
+                />
+              )}
             </div>
           ))}
         </div>
