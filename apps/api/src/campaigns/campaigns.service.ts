@@ -125,11 +125,11 @@ export class CampaignsService {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20_000);
     try {
-      // AIM's "Write config.json" node reads body.city, but our form field is
-      // `state`. Send `city` too (= state) so the campaign's config.json carries
-      // the location. Without it, Lead Satellite's "Build Search Query" gets 0
-      // cities and bails (returns []), so the funnel produces no leads.
-      const aimPayload = { ...dto, city: dto.state };
+      // AIM's "Write config.json" node reads body.region (the location ZONE).
+      // Our form/DTO field is `state` (the zone enum), so alias it to `region`
+      // for the webhook. Without it, Lead Satellite's "Build Search Query" gets
+      // 0 cities and bails (returns []), so the funnel produces no leads.
+      const aimPayload = { ...dto, region: dto.state };
       const res = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

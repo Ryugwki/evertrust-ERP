@@ -677,6 +677,105 @@ export const TenderDeadlineRiskDto = z.object({
 export type TenderDeadlineRiskDto = z.infer<typeof TenderDeadlineRiskDto>;
 
 // ============================================================================
+// PHASE 7 (R34–R37): conditional QC gate + submission act + evidence logging
+// The submission act stays HUMAN (the portal). The ERP enforces the gates, records
+// the proof, and only then moves the tender to SUBMITTED — so SUBMITTED ⟺ a logged
+// submission_receipt (no submission without evidence). All gate predicates are PURE
+// so the API (enforcement) and the web UI (readiness card) read ONE authority.
+// ============================================================================
+
+// R34 — conditional QC. A QC review (approval_type 'QC') is REQUIRED before a tender
+// may be submitted when ANY of: it's above the EU procurement threshold (high-value),
+// its pricing is high-risk (≥35% unbacked or a top-5 line unbacked — computeTenderRisk),
+// or a QC review was explicitly opened (a human flagged it). Routine tenders skip QC
+// and can go straight to submit. Pure: the API computes the inputs, the web reuses it.
+export interface QcRequirement {
+  required: boolean;
+  reasons: string[];
+}
+export function qcRequired(input: {
+  isAboveThreshold: boolean;
+  highRisk: boolean;
+  qcRequested: boolean;
+}): QcRequirement {
+  const reasons: string[] = [];
+  if (input.isAboveThreshold)
+    reasons.push('Above the EU procurement threshold (high-value)');
+  if (input.highRisk) reasons.push('Pricing is high-risk (unbacked lines)');
+  if (input.qcRequested) reasons.push('A QC review was opened for this tender');
+  return { required: reasons.length > 0, reasons };
+}
+
+// The reasons a tender CANNOT be submitted yet (empty array = ready to submit).
+// Composes the Phase 6 customer-approval gate (isSubmissionBlocked) with the Phase 7
+// QC gate and the state-machine precondition. Shared by the API's submit() and the
+// web submission card so enforcement and display can never drift.
+export function submissionBlockers(input: {
+  status: TenderStatus;
+  hasCustomerApproval: boolean;
+  qcRequired: boolean;
+  hasApprovedQc: boolean;
+}): string[] {
+  const blockers: string[] = [];
+  if (!canTransition(input.status, 'SUBMITTED')) {
+    blockers.push(
+      `Tender must be in DOCUMENTS to submit (currently ${input.status}).`,
+    );
+  }
+  if (isSubmissionBlocked('SUBMITTED', input.hasCustomerApproval)) {
+    blockers.push(
+      'No customer approval recorded (no written approval → no submission).',
+    );
+  }
+  if (input.qcRequired && !input.hasApprovedQc) {
+    blockers.push('QC review required but not approved.');
+  }
+  return blockers;
+}
+
+// Body for POST /tenders/:id/submit — the human records the portal submission proof.
+// proofUrl is the channel-agnostic evidence reference (portal receipt id, link, or a
+// note). fileList optionally overrides the server's snapshot of the attached
+// documents (omit = the API snapshots the current document set automatically).
+export const SubmitTenderDto = z.object({
+  proofUrl: z.string().min(1).max(2000),
+  fileList: z.array(z.string().max(400)).max(200).optional(),
+});
+export type SubmitTenderDto = z.infer<typeof SubmitTenderDto>;
+
+// Read shape of a submission_receipts row — the immutable submission evidence
+// (proof + timestamp + the file-list snapshot taken at submit time).
+export const SubmissionReceiptDto = z.object({
+  id: z.string().uuid(),
+  tenderId: z.string().uuid(),
+  submittedBy: z.string().uuid(),
+  submittedAt: z.string(),
+  proofUrl: z.string(),
+  fileList: z.array(z.string()).nullable(),
+});
+export type SubmissionReceiptDto = z.infer<typeof SubmissionReceiptDto>;
+
+// GET /tenders/:id/submission — everything the submission card needs: the gate state
+// (computed the SAME way submit() enforces it), the QC requirement + reasons, the
+// proposed file list (current documents) and the logged receipts. canSubmit mirrors
+// blockers.length === 0.
+export const SubmissionReadinessDto = z.object({
+  status: TenderStatus,
+  hasCustomerApproval: z.boolean(),
+  qcRequired: z.boolean(),
+  qcReasons: z.array(z.string()),
+  qcRequestExists: z.boolean(),
+  hasApprovedQc: z.boolean(),
+  highRisk: z.boolean(),
+  blockers: z.array(z.string()),
+  canSubmit: z.boolean(),
+  // The document names currently attached (the proposed bid file list).
+  documents: z.array(z.string()),
+  receipts: z.array(SubmissionReceiptDto),
+});
+export type SubmissionReadinessDto = z.infer<typeof SubmissionReadinessDto>;
+
+// ============================================================================
 // GROWTH ENGINE — the "AIM sequence" (campaign launch → outbound arsenal)
 // A campaign is the AIM target. On launch the API fires the AIM n8n webhook,
 // which provisions the Drive campaign folder + config.json that the arsenal
@@ -717,12 +816,27 @@ export type CampaignDto = z.infer<typeof CampaignDto>;
 // Body for POST /campaigns — the 9 AIM "Lock & Load" inputs. `name` is the only
 // optional one (matches the reference form). status/driveFolder*/deployed* are
 // server-owned (set from the AIM webhook result) and deliberately absent.
+// The AIM "State / City" target is one of these fixed regional zones, NOT free
+// text — so every downstream consumer (the campaign's config.json → Lead
+// Satellite, the sequence-row display, etc.) reads a known, enumerable value.
+// Single source of truth for BOTH the AIM dropdown and the request validation.
+export const CAMPAIGN_REGIONS = [
+  'Anywhere',
+  'North',
+  'South',
+  'East',
+  'West',
+  'Near Border',
+] as const;
+export type CampaignRegion = (typeof CAMPAIGN_REGIONS)[number];
+
 export const CreateCampaignDto = z.object({
   name: z.string().max(60).optional(),
   niche: z.string().min(1).max(120),
   target: z.string().min(1).max(200),
   country: z.string().min(1).max(120),
-  state: z.string().min(1).max(120),
+  // Location zone — constrained to the CAMPAIGN_REGIONS dropdown choices.
+  state: z.enum([...CAMPAIGN_REGIONS] as [CampaignRegion, ...CampaignRegion[]]),
   project: z.string().min(1).max(200),
   gmailLabel: z.string().min(1).max(120),
   salesCalendarId: z.string().min(1).max(200),
@@ -794,10 +908,26 @@ export const RunArsenalDto = z.object({
 export type RunArsenalDto = z.infer<typeof RunArsenalDto>;
 
 // Mirrors the arsenal_run_source / arsenal_run_status pgEnums.
-export const ArsenalRunSource = z.enum(['MANUAL', 'SCHEDULED']);
+// MANUAL = a human pressed "Run now"; SCHEDULED = the ERP's daily scheduler;
+// N8N = an autonomous run that n8n reported back via the callback (it ran itself).
+export const ArsenalRunSource = z.enum(['MANUAL', 'SCHEDULED', 'N8N']);
 export type ArsenalRunSource = z.infer<typeof ArsenalRunSource>;
-export const ArsenalRunStatus = z.enum(['DISPATCHED', 'FAILED']);
+// DISPATCHED/FAILED = the ERP→n8n hand-off outcome (ERP-initiated runs). SUCCESS/
+// ERROR = the FINAL outcome of an autonomous n8n run, reported back via the
+// callback. The web treats DISPATCHED+SUCCESS as "ok" and FAILED+ERROR as "error".
+export const ArsenalRunStatus = z.enum([
+  'DISPATCHED',
+  'FAILED',
+  'SUCCESS',
+  'ERROR',
+]);
 export type ArsenalRunStatus = z.infer<typeof ArsenalRunStatus>;
+
+// True when a run status counts as a successful outcome (vs an error) — shared so
+// the API and web agree on how to colour/tag a run in the Live activity feed.
+export function isArsenalRunOk(status: ArsenalRunStatus): boolean {
+  return status === 'DISPATCHED' || status === 'SUCCESS';
+}
 
 // Read shape of an arsenal_runs row — the record of an ERP→n8n hand-off.
 export const ArsenalRunDto = z.object({
@@ -812,6 +942,282 @@ export const ArsenalRunDto = z.object({
   createdAt: z.string(),
 });
 export type ArsenalRunDto = z.infer<typeof ArsenalRunDto>;
+
+// Body for POST /arsenal/runs/callback — the n8n→ERP writeback. An n8n stage
+// workflow POSTs this at the END of an autonomous run so it appears in the
+// per-campaign Live activity feed (the executions poller shows RUNNING live; this
+// records the historical outcome). Identify the campaign by ERP `campaignId` OR by
+// its Google Drive folder id (`driveFolderId` — what n8n knows natively, since it
+// reads config from that folder); omit BOTH for a global stage. `stage` + `status`
+// are normalised to upper-case so n8n can send either case. Auth is a shared
+// ingest token in the `x-arsenal-token` header, NOT a JWT (n8n has no session).
+export const ArsenalCallbackDto = z.object({
+  stage: z.preprocess(
+    (v) => (typeof v === 'string' ? v.toUpperCase() : v),
+    ArsenalStage,
+  ),
+  status: z.preprocess(
+    (v) => (typeof v === 'string' ? v.toUpperCase() : v),
+    z.enum(['SUCCESS', 'ERROR']),
+  ),
+  campaignId: z.string().uuid().optional(),
+  driveFolderId: z.string().min(1).max(256).optional(),
+  detail: z.string().max(500).optional(),
+  // Optional per-run funnel counts the Marketing report sums (Phase 2). A flat map
+  // of metric key -> finite non-negative number; capped so a mis-wired node can't
+  // bloat the row. Stages send what they know, e.g. { emailsSent: 40 }.
+  metrics: z
+    .record(z.string().max(40), z.number().finite().nonnegative())
+    .refine((m) => Object.keys(m).length <= 20, 'too many metric keys')
+    .optional(),
+});
+export type ArsenalCallbackDto = z.infer<typeof ArsenalCallbackDto>;
+
+// Response of the callback — minimal ingest ack (the recorded run's id).
+export const ArsenalCallbackResultDto = z.object({
+  ok: z.literal(true),
+  id: z.string().uuid(),
+});
+export type ArsenalCallbackResultDto = z.infer<typeof ArsenalCallbackResultDto>;
+
+// ---------------------------------------------------------------------------
+// MARKETING REPORT — the Growth-Engine sequence report (daily/weekly/monthly).
+// Aggregates arsenal_runs (+ campaigns) per period. "Health" fields (runs,
+// success/error) are live today; funnel metric fields are null until n8n reports
+// them via the callback `metrics` field above.
+// ---------------------------------------------------------------------------
+
+export const MarketingReportPeriod = z.enum(['day', 'week', 'month']);
+export type MarketingReportPeriod = z.infer<typeof MarketingReportPeriod>;
+
+// Canonical metric keys an n8n stage may report on a run (callback.metrics).
+export const ARSENAL_METRIC_KEYS = [
+  'leadsFound',
+  'templatesForged',
+  'emailsSent',
+  'repliesHandled',
+  'meetingsBooked',
+  'leadsSwept',
+] as const;
+export type ArsenalMetricKey = (typeof ARSENAL_METRIC_KEYS)[number];
+
+// The metric featured on each stage's lane in the report.
+export const STAGE_PRIMARY_METRIC: Record<ArsenalStage, ArsenalMetricKey> = {
+  LEAD_SATELLITE: 'leadsFound',
+  AMMO_FORGE: 'templatesForged',
+  REACH_BAZOOKA: 'emailsSent',
+  REPLY_GLOCK: 'meetingsBooked',
+  SLEEPER_GRENADE: 'leadsSwept',
+};
+
+// Human labels for the metric keys (web display).
+export const ARSENAL_METRIC_LABEL: Record<ArsenalMetricKey, string> = {
+  leadsFound: 'Leads found',
+  templatesForged: 'Templates forged',
+  emailsSent: 'Emails sent',
+  repliesHandled: 'Replies',
+  meetingsBooked: 'Meetings booked',
+  leadsSwept: 'Leads swept',
+};
+
+// One stage's slice of the report. successRate null when runs===0; metrics is the
+// summed map for the window ({} if none reported); trend = runs per bucket aligned
+// to MarketingReportDto.buckets.
+export const MarketingStageReportDto = z.object({
+  stage: ArsenalStage,
+  runs: z.number().int().nonnegative(),
+  ok: z.number().int().nonnegative(),
+  errors: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1).nullable(),
+  metrics: z.record(z.string(), z.number()),
+  trend: z.array(z.number().int().nonnegative()),
+});
+export type MarketingStageReportDto = z.infer<typeof MarketingStageReportDto>;
+
+// GET /arsenal/report?period=… . funnel/kpi metric fields are null when no run in
+// the window carried that metric (= "awaiting n8n"); a number (incl. 0) means it
+// was reported.
+export const MarketingReportDto = z.object({
+  period: MarketingReportPeriod,
+  // The campaign this report is scoped to (null = all campaigns / org-wide).
+  campaignId: z.string().uuid().nullable(),
+  from: z.string(),
+  to: z.string(),
+  buckets: z.array(z.string()),
+  kpis: z.object({
+    campaignsLaunched: z.number().int().nonnegative(),
+    totalRuns: z.number().int().nonnegative(),
+    successRate: z.number().min(0).max(1).nullable(),
+    meetingsBooked: z.number().nullable(),
+  }),
+  funnel: z.object({
+    leadsFound: z.number().nullable(),
+    emailsSent: z.number().nullable(),
+    repliesHandled: z.number().nullable(),
+    meetingsBooked: z.number().nullable(),
+  }),
+  stages: z.array(MarketingStageReportDto),
+});
+export type MarketingReportDto = z.infer<typeof MarketingReportDto>;
+
+// POST /arsenal/backfill — import recent n8n executions as runs (with metrics
+// read from execution data) so the report's funnel fills from real history.
+// configured=false when the n8n API isn't wired up. imported = new rows written,
+// scanned = executions examined, byStage = per-stage import counts.
+export const ArsenalBackfillResultDto = z.object({
+  configured: z.boolean(),
+  scanned: z.number().int().nonnegative(),
+  imported: z.number().int().nonnegative(),
+  byStage: z.record(z.string(), z.number()),
+});
+export type ArsenalBackfillResultDto = z.infer<typeof ArsenalBackfillResultDto>;
+
+// ---------------------------------------------------------------------------
+// KEY ACCOUNT — hot-lead CRM (mirrors the n8n hot_leads subsystem).
+// ---------------------------------------------------------------------------
+
+// Pipeline stage — the board columns. Mirrors the n8n "Hot Reason" vocabulary
+// (Interested / MeetingScheduled), plus CUSTOMER (graduated) and ARCHIVED.
+export const LeadStage = z.enum([
+  'INTERESTED',
+  'MEETING_SCHEDULED',
+  'CUSTOMER',
+  'ARCHIVED',
+]);
+export type LeadStage = z.infer<typeof LeadStage>;
+
+export const LeadStageLabel: Record<LeadStage, string> = {
+  INTERESTED: 'Interested',
+  MEETING_SCHEDULED: 'Meeting Scheduled',
+  CUSTOMER: 'Customer',
+  ARCHIVED: 'Archived',
+};
+
+export const LeadSource = z.enum(['N8N', 'MANUAL']);
+export type LeadSource = z.infer<typeof LeadSource>;
+
+// Read shape of a leads row — the hot_leads mirror + ERP pipeline fields.
+export const LeadDto = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  email: z.string(),
+  companyName: z.string().nullable(),
+  companyType: z.string().nullable(),
+  website: z.string().nullable(),
+  city: z.string().nullable(),
+  country: z.string().nullable(),
+  tier: z.string().nullable(),
+  niche: z.string().nullable(),
+  sourceCampaign: z.string().nullable(),
+  campaignId: z.string().uuid().nullable(),
+  hotReason: z.string().nullable(),
+  leadStatus: z.string().nullable(),
+  meetingDate: z.string().nullable(),
+  detectedAt: z.string().nullable(),
+  note: z.string().nullable(),
+  stage: LeadStage,
+  customerId: z.string().uuid().nullable(),
+  source: LeadSource,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type LeadDto = z.infer<typeof LeadDto>;
+
+// Body for POST /leads (manual add). email is the only required field.
+export const CreateLeadDto = z.object({
+  email: z.string().email(),
+  companyName: z.string().max(200).optional(),
+  niche: z.string().max(120).optional(),
+  tier: z.string().max(20).optional(),
+  country: z.string().max(120).optional(),
+  sourceCampaign: z.string().max(200).optional(),
+  campaignId: z.string().uuid().optional(),
+  note: z.string().max(2000).optional(),
+  stage: LeadStage.optional(),
+});
+export type CreateLeadDto = z.infer<typeof CreateLeadDto>;
+
+// Body for PATCH /leads/:id — move stage / edit a few fields.
+export const UpdateLeadDto = z
+  .object({
+    stage: LeadStage.optional(),
+    note: z.string().max(2000).optional(),
+    tier: z.string().max(20).optional(),
+    companyName: z.string().max(200).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, 'No fields to update');
+export type UpdateLeadDto = z.infer<typeof UpdateLeadDto>;
+
+// POST /leads/backfill — import hot leads + graduated customers from the Hot
+// Leads Pipeline execution data. imported = hot-lead rows upserted; customers =
+// ERP customer rows created from graduated (_t:"cust") rows.
+export const LeadBackfillResultDto = z.object({
+  configured: z.boolean(),
+  scanned: z.number().int().nonnegative(),
+  imported: z.number().int().nonnegative(),
+  customers: z.number().int().nonnegative(),
+});
+export type LeadBackfillResultDto = z.infer<typeof LeadBackfillResultDto>;
+
+// POST /leads/provision {campaignId} — fire the Provision Hot Leads webhook for a
+// campaign. configured=false when the webhook URL isn't set; ok=false on a failed
+// dispatch; hotLeadsUrl is the created sheet's URL when the webhook returns it.
+export const ProvisionHotLeadsResultDto = z.object({
+  configured: z.boolean(),
+  ok: z.boolean(),
+  hotLeadsUrl: z.string().nullable(),
+  detail: z.string(),
+});
+export type ProvisionHotLeadsResultDto = z.infer<typeof ProvisionHotLeadsResultDto>;
+
+// Body for /leads/provision + /leads/run-pipeline. campaignId scopes the action to
+// one campaign (its Drive folder); omit on run-pipeline to run all campaigns.
+export const LeadCampaignActionDto = z.object({
+  campaignId: z.string().uuid().optional(),
+});
+export type LeadCampaignActionDto = z.infer<typeof LeadCampaignActionDto>;
+
+// POST /leads/run-pipeline — fire the Hot Leads Pipeline webhook (POST {folderId}).
+export const RunHotLeadsPipelineResultDto = z.object({
+  configured: z.boolean(),
+  ok: z.boolean(),
+  detail: z.string(),
+});
+export type RunHotLeadsPipelineResultDto = z.infer<
+  typeof RunHotLeadsPipelineResultDto
+>;
+
+// Result of a bulk "clear" (test-data reset): how many rows were deleted.
+export const ClearResultDto = z.object({
+  deleted: z.number().int().nonnegative(),
+});
+export type ClearResultDto = z.infer<typeof ClearResultDto>;
+
+// Real n8n execution status for a stage (the executions poller). RUNNING = an n8n
+// execution is in progress; SUCCESS / ERROR = the latest finished one; IDLE = none.
+export const ArsenalExecutionStatus = z.enum([
+  'RUNNING',
+  'SUCCESS',
+  'ERROR',
+  'IDLE',
+]);
+export type ArsenalExecutionStatus = z.infer<typeof ArsenalExecutionStatus>;
+
+export const ArsenalExecutionDto = z.object({
+  stage: ArsenalStage,
+  status: ArsenalExecutionStatus,
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+});
+export type ArsenalExecutionDto = z.infer<typeof ArsenalExecutionDto>;
+
+// GET /arsenal/executions — live per-stage n8n run state. configured=false when the
+// n8n API isn't wired up (the web then falls back to its dispatch-based status).
+export const ArsenalExecutionsDto = z.object({
+  configured: z.boolean(),
+  stages: z.array(ArsenalExecutionDto),
+});
+export type ArsenalExecutionsDto = z.infer<typeof ArsenalExecutionsDto>;
 
 // "HH:MM" (24h) — shared so the API validates and the web input matches.
 export const DAILY_TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;

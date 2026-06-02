@@ -27,6 +27,7 @@ import { TenderTransition } from './tender-transition';
 import { TenderEditDialog } from './tender-edit-dialog';
 import { TenderAssigneeCard } from './tender-assignee-card';
 import { TenderApprovalCard } from './tender-approval-card';
+import { TenderSubmissionCard } from './tender-submission-card';
 import { TenderDocumentsCard } from './tender-documents-card';
 
 // Tender detail surface: status shown prominently, all fields, a write-gated Edit
@@ -120,6 +121,8 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
       </Card>
 
       <TenderApprovalCard tenderId={tender.id} />
+
+      <TenderSubmissionCard tenderId={tender.id} />
 
       <TenderAssigneeCard tenderId={tender.id} />
 

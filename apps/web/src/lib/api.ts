@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   AdminUserDto,
   ApprovalRequestDto,
+  ArsenalBackfillResultDto,
+  ArsenalExecutionsDto,
   ArsenalRunDto,
   ArsenalSettingsDto,
   ArsenalStage,
@@ -13,6 +15,7 @@ import {
   CreateCustomerDto,
   CreateLineItemDto,
   CreatePriceObservationDto,
+  CreateRfqDto,
   CreateSupplierDto,
   CreateTenderDto,
   CustomerDto,
@@ -23,9 +26,16 @@ import {
   ListTendersQuery,
   LoginDto,
   LoginResponseDto,
+  MarketingReportDto,
+  MarketingReportPeriod,
   MeDto,
+  PriceAssistResultDto,
   PriceObservationDto,
+  RfqDto,
   RunArsenalDto,
+  SubmissionReadinessDto,
+  SubmissionReceiptDto,
+  SubmitTenderDto,
   SupplierDto,
   TenderDeadlineRiskDto,
   TenderDto,
@@ -41,6 +51,14 @@ import {
   UploadDocumentDto,
   UpsertPricingDto,
   UserListItemDto,
+  CreateLeadDto,
+  UpdateLeadDto,
+  LeadDto,
+  LeadBackfillResultDto,
+  ProvisionHotLeadsResultDto,
+  RunHotLeadsPipelineResultDto,
+  ClearResultDto,
+  type LeadStage,
 } from '@evertrust/shared';
 import { API_URL } from './env';
 
@@ -65,6 +83,9 @@ const TenderDeadlineRiskListDto = z.array(TenderDeadlineRiskDto);
 const CampaignListDto = z.array(CampaignDto);
 // Arsenal: recent ERP→n8n trigger runs.
 const ArsenalRunListDto = z.array(ArsenalRunDto);
+const LeadListDto = z.array(LeadDto);
+// Phase 5c: the RFQs dispatched for a tender.
+const RfqListDto = z.array(RfqDto);
 // GET /tenders/:id/assignment returns the ACTIVE assignment or null.
 const AssignmentOrNullDto = AssignmentDto.nullable();
 
@@ -336,6 +357,38 @@ export const api = {
         body: CreateApprovalRequestDto.parse(input),
         schema: ApprovalRequestDto,
       }),
+
+    // ---- Phase 5c: Hermes supplier RFQ (list + dispatch) ----
+    listRfqs: (id: string, signal?: AbortSignal) =>
+      request<RfqDto[]>(`/tenders/${id}/rfqs`, {
+        schema: RfqListDto,
+        signal,
+      }),
+
+    // Dispatch an RFQ to suppliers (fires the Hermes webhook server-side). Returns
+    // the recorded row (status DISPATCHED | FAILED — the webhook is best-effort).
+    sendRfq: (id: string, input: z.infer<typeof CreateRfqDto>) =>
+      request<RfqDto>(`/tenders/${id}/rfqs`, {
+        method: 'POST',
+        body: CreateRfqDto.parse(input),
+        schema: RfqDto,
+      }),
+
+    // ---- Phase 7: submission readiness (the gate state) + the submit act ----
+    submission: (id: string, signal?: AbortSignal) =>
+      request<SubmissionReadinessDto>(`/tenders/${id}/submission`, {
+        schema: SubmissionReadinessDto,
+        signal,
+      }),
+
+    // Record the human submission proof; the API enforces the full gate, logs the
+    // receipt and advances the tender to SUBMITTED. Returns the receipt.
+    submit: (id: string, input: z.infer<typeof SubmitTenderDto>) =>
+      request<SubmissionReceiptDto>(`/tenders/${id}/submit`, {
+        method: 'POST',
+        body: SubmitTenderDto.parse(input),
+        schema: SubmissionReceiptDto,
+      }),
   },
 
   // ---- Phase 6: approvals addressed by their own id (record a decision) ----
@@ -394,6 +447,40 @@ export const api = {
         signal,
       }),
 
+    // Live per-stage n8n execution status (real run-state sync).
+    executions: (signal?: AbortSignal) =>
+      request<ArsenalExecutionsDto>('/arsenal/executions', {
+        schema: ArsenalExecutionsDto,
+        signal,
+      }),
+
+    // Marketing report — Growth-Engine sequence aggregated by period, optionally
+    // scoped to one campaign.
+    report: (
+      period: z.infer<typeof MarketingReportPeriod>,
+      campaignId?: string | null,
+      signal?: AbortSignal,
+    ) =>
+      request<MarketingReportDto>(
+        `/arsenal/report?period=${period}${campaignId ? `&campaignId=${campaignId}` : ''}`,
+        { schema: MarketingReportDto, signal },
+      ),
+
+    // Backfill the report from n8n execution history (imports recent runs +
+    // metrics). Idempotent server-side. Returns an import summary.
+    backfill: () =>
+      request<ArsenalBackfillResultDto>('/arsenal/backfill', {
+        method: 'POST',
+        schema: ArsenalBackfillResultDto,
+      }),
+
+    // Clear the run feed (test-data reset).
+    clearRuns: () =>
+      request<ClearResultDto>('/arsenal/runs', {
+        method: 'DELETE',
+        schema: ClearResultDto,
+      }),
+
     // Fire a stage's n8n webhook (records + returns the run; status DISPATCHED |
     // FAILED). campaignId is required for PER_CAMPAIGN stages.
     run: (stage: ArsenalStage, input: z.infer<typeof RunArsenalDto>) =>
@@ -415,6 +502,70 @@ export const api = {
         method: 'PUT',
         body: UpdateArsenalSettingsDto.parse(input),
         schema: ArsenalSettingsDto,
+      }),
+  },
+
+  // ---- Key Account: hot-lead CRM ----
+  leads: {
+    list: (
+      params: { stage?: LeadStage; campaignId?: string } = {},
+      signal?: AbortSignal,
+    ) => {
+      const q = new URLSearchParams();
+      if (params.stage) q.set('stage', params.stage);
+      if (params.campaignId) q.set('campaignId', params.campaignId);
+      const qs = q.toString();
+      return request<LeadDto[]>(`/leads${qs ? `?${qs}` : ''}`, {
+        schema: LeadListDto,
+        signal,
+      });
+    },
+
+    create: (input: z.infer<typeof CreateLeadDto>) =>
+      request<LeadDto>('/leads', {
+        method: 'POST',
+        body: CreateLeadDto.parse(input),
+        schema: LeadDto,
+      }),
+
+    update: (id: string, input: z.infer<typeof UpdateLeadDto>) =>
+      request<LeadDto>(`/leads/${id}`, {
+        method: 'PATCH',
+        body: UpdateLeadDto.parse(input),
+        schema: LeadDto,
+      }),
+
+    convert: (id: string) =>
+      request<LeadDto>(`/leads/${id}/convert`, {
+        method: 'POST',
+        schema: LeadDto,
+      }),
+
+    backfill: () =>
+      request<LeadBackfillResultDto>('/leads/backfill', {
+        method: 'POST',
+        schema: LeadBackfillResultDto,
+      }),
+
+    provision: (campaignId: string) =>
+      request<ProvisionHotLeadsResultDto>('/leads/provision', {
+        method: 'POST',
+        body: { campaignId },
+        schema: ProvisionHotLeadsResultDto,
+      }),
+
+    runPipeline: (campaignId?: string) =>
+      request<RunHotLeadsPipelineResultDto>('/leads/run-pipeline', {
+        method: 'POST',
+        body: campaignId ? { campaignId } : {},
+        schema: RunHotLeadsPipelineResultDto,
+      }),
+
+    // Clear all leads (test-data reset).
+    clear: () =>
+      request<ClearResultDto>('/leads', {
+        method: 'DELETE',
+        schema: ClearResultDto,
       }),
   },
 
@@ -446,6 +597,15 @@ export const api = {
         method: 'POST',
         body: CreatePriceObservationDto.parse(input),
         schema: PriceObservationDto,
+      }),
+
+    // Phase 5b: ask Claude for a unit-price SUGGESTION (never auto-applied — the
+    // human records it as an AI_ESTIMATE observation). { configured:false } when
+    // Claude isn't wired up; { error } on a model failure (the call still 200s).
+    priceAssist: (id: string) =>
+      request<PriceAssistResultDto>(`/line-items/${id}/price-assist`, {
+        method: 'POST',
+        schema: PriceAssistResultDto,
       }),
   },
 

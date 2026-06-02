@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  ArsenalCallbackDto as ArsenalCallbackSchema,
   RunArsenalDto as RunArsenalSchema,
   UpdateArsenalSettingsDto as UpdateArsenalSettingsSchema,
 } from '@evertrust/shared';
@@ -10,3 +11,4 @@ export class RunArsenalBodyDto extends createZodDto(RunArsenalSchema) {}
 export class UpdateArsenalSettingsBodyDto extends createZodDto(
   UpdateArsenalSettingsSchema,
 ) {}
+export class ArsenalCallbackBodyDto extends createZodDto(ArsenalCallbackSchema) {}

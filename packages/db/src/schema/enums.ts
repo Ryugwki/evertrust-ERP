@@ -113,17 +113,43 @@ export const arsenalStageEnum = pgEnum('arsenal_stage', [
   'SLEEPER_GRENADE',
 ]);
 
-// What initiated an arsenal run: a human pressing "Run now", or the ERP's own
-// daily scheduler (e.g. the Bazooka daily send).
+// What initiated an arsenal run: a human pressing "Run now" (MANUAL), the ERP's
+// own daily scheduler (SCHEDULED, e.g. the Bazooka daily send), or an autonomous
+// run that n8n reported back via the callback (N8N — it ran itself, no ERP trigger).
 export const arsenalRunSourceEnum = pgEnum('arsenal_run_source', [
   'MANUAL',
   'SCHEDULED',
+  'N8N',
 ]);
 
-// Outcome of the ERP→n8n hand-off. DISPATCHED = the webhook accepted the trigger
-// (n8n then runs async); FAILED = the ERP could not reach it / non-2xx. The ERP
-// owns the hand-off, not the downstream n8n execution.
+// Outcome of an arsenal run. DISPATCHED = the ERP→n8n hand-off was accepted (n8n
+// then runs async); FAILED = the ERP could not reach it / non-2xx. SUCCESS / ERROR
+// = the FINAL outcome of an autonomous n8n run, reported back via the callback —
+// the ERP owns the hand-off, n8n owns (and now reports) the downstream execution.
 export const arsenalRunStatusEnum = pgEnum('arsenal_run_status', [
   'DISPATCHED',
   'FAILED',
+  'SUCCESS',
+  'ERROR',
 ]);
+
+// Outcome of a Hermes supplier-RFQ dispatch (Phase 5c). Same 2-state ERP→n8n
+// hand-off model as arsenal runs: DISPATCHED = the Hermes webhook accepted the RFQ
+// (n8n emails suppliers async); FAILED = the ERP could not reach it / non-2xx.
+// Supplier replies land as SUPPLIER_QUOTE price observations, not on this row.
+export const rfqStatusEnum = pgEnum('rfq_status', ['DISPATCHED', 'FAILED']);
+
+// Key Account hot-lead pipeline stage. Mirrors the n8n hot_leads vocabulary:
+// INTERESTED / MEETING_SCHEDULED (the "Hot Reason"), CUSTOMER (graduated), and
+// ARCHIVED (dismissed). The board columns are INTERESTED -> MEETING_SCHEDULED ->
+// CUSTOMER.
+export const leadStageEnum = pgEnum('lead_stage', [
+  'INTERESTED',
+  'MEETING_SCHEDULED',
+  'CUSTOMER',
+  'ARCHIVED',
+]);
+
+// Where a lead came from: N8N = imported from the Hot Leads Pipeline; MANUAL =
+// added by hand in the ERP.
+export const leadSourceEnum = pgEnum('lead_source', ['N8N', 'MANUAL']);

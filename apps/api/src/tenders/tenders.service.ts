@@ -15,7 +15,7 @@ import type {
 import { computeDeadlineRisk } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import { tenantScope } from '../common/tenant';
-import { canTransition, isSubmissionBlocked } from './tender-state-machine';
+import { canTransition } from './tender-state-machine';
 
 // Row type as Drizzle returns it (Date timestamps, string numerics). The API
 // JSON-serializes these to the TenderDto wire shape.
@@ -138,17 +138,14 @@ export class TendersService {
       );
     }
 
-    // Phase 6 (R30) hard gate: a tender cannot reach SUBMITTED without a recorded
-    // customer approval. Channel-agnostic — the rule (isSubmissionBlocked) lives in
-    // @evertrust/shared and is shared with the web UI so the two cannot drift.
+    // Phase 7 (R35–R37): SUBMITTED is reached ONLY through POST /tenders/:id/submit,
+    // which enforces the FULL gate (Phase 6 customer approval + Phase 7 conditional
+    // QC) AND logs the submission_receipt — so SUBMITTED ⟺ recorded evidence. A
+    // direct transition here is refused; the gate lives in SubmissionService.
     if (to === 'SUBMITTED') {
-      const hasApproval = await this.hasApprovedCustomerApproval(id);
-      if (isSubmissionBlocked(to, hasApproval)) {
-        throw new BadRequestException(
-          'Cannot submit: no customer approval recorded. Record the customer ' +
-            'approval first (no written approval → no submission).',
-        );
-      }
+      throw new BadRequestException(
+        'Submit via POST /tenders/:id/submit so the proof is logged — a direct transition to SUBMITTED is not allowed.',
+      );
     }
 
     const updated = await this.db
@@ -189,24 +186,5 @@ export class TendersService {
       }))
       .filter((r) => r.risk.atRisk)
       .sort((a, b) => (a.risk.daysRemaining ?? 0) - (b.risk.daysRemaining ?? 0));
-  }
-
-  // True iff the tender has at least one APPROVED CUSTOMER approval — the basis
-  // for the Phase 6 submission gate. The caller (transition) has already loaded
-  // the tender via get() under tenantScope, so querying the child
-  // approval_requests by tenderId here cannot leak across orgs.
-  private async hasApprovedCustomerApproval(tenderId: string): Promise<boolean> {
-    const rows = await this.db
-      .select()
-      .from(schema.approvalRequests)
-      .where(
-        and(
-          eq(schema.approvalRequests.tenderId, tenderId),
-          eq(schema.approvalRequests.type, 'CUSTOMER'),
-          eq(schema.approvalRequests.status, 'APPROVED'),
-        ),
-      )
-      .limit(1);
-    return rows.length > 0;
   }
 }

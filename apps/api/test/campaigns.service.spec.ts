@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { schema } from '@evertrust/db';
+import type { CreateCampaignDto } from '@evertrust/shared';
 import { CampaignsService } from '../src/campaigns/campaigns.service';
 import type { AppConfigService } from '../src/config/app-config.service';
 import { FakeTable, makeFakeDb } from './fake-db';
@@ -9,11 +10,11 @@ const ORG_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const USER = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 const WEBHOOK = 'https://evertrustgmbh.app.n8n.cloud/webhook/aim-deploy-campaign';
 
-const DTO = {
+const DTO: CreateCampaignDto = {
   niche: 'LED',
   target: 'EPC',
   country: 'Germany',
-  state: 'Berlin',
+  state: 'North',
   project: 'LED Retrofit Berlin 2026',
   gmailLabel: 'LED-Berlin-2026',
   salesCalendarId: 'info@evertrust-germany.de',
@@ -63,7 +64,7 @@ describe('CampaignsService — launch (create + AIM deploy)', () => {
     expect(row.status).toBe('DRAFT');
     expect(row.organizationId).toBe(ORG_A);
     expect(row.niche).toBe('LED');
-    expect(row.state).toBe('Berlin');
+    expect(row.state).toBe('North');
     expect(row.driveFolderUrl).toBeFalsy();
     expect(campaigns.rows).toHaveLength(1);
   });
@@ -91,10 +92,11 @@ describe('CampaignsService — launch (create + AIM deploy)', () => {
     // The 9 AIM inputs are POSTed verbatim (matches the reference form payload).
     expect(JSON.parse(opts.body as string)).toMatchObject({
       niche: 'LED',
-      state: 'Berlin',
-      // `city` is aliased from `state` so AIM's config.json (which reads body.city)
-      // carries the location — otherwise Lead Satellite gets 0 cities and bails.
-      city: 'Berlin',
+      state: 'North',
+      // `region` is aliased from `state` so AIM's config.json (which reads
+      // body.region) carries the location zone — otherwise Lead Satellite gets
+      // 0 cities and bails.
+      region: 'North',
       gmailLabel: 'LED-Berlin-2026',
     });
     expect(row.status).toBe('DEPLOYED');

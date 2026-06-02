@@ -49,6 +49,12 @@ const ctxCreateObservation = (u: AuthUser) =>
     () => LineItemsController,
     u,
   );
+const ctxPriceAssist = (u: AuthUser) =>
+  contextFor(
+    () => LineItemsController.prototype.priceAssist,
+    () => LineItemsController,
+    u,
+  );
 
 describe('pricing route permission gating (SUPER_ADMIN–EMPLOYEE matrix)', () => {
   const guard = new PermissionsGuard(new Reflector());
@@ -74,6 +80,16 @@ describe('pricing route permission gating (SUPER_ADMIN–EMPLOYEE matrix)', () =
   it('allows MANAGER to upsert pricing and record an observation (pricing:write)', () => {
     expect(guard.canActivate(ctxUpsertPricing(MANAGER))).toBe(true);
     expect(guard.canActivate(ctxCreateObservation(MANAGER))).toBe(true);
+  });
+
+  it('forbids EMPLOYEE from asking Claude for a price (price-assist needs pricing:write)', () => {
+    expect(() => guard.canActivate(ctxPriceAssist(EMPLOYEE))).toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('allows MANAGER to ask Claude for a price (pricing:write)', () => {
+    expect(guard.canActivate(ctxPriceAssist(MANAGER))).toBe(true);
   });
 
   it('forbids EMPLOYEE from finalizing pricing (lacks pricing:approve)', () => {

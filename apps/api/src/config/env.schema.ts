@@ -43,6 +43,39 @@ export const EnvSchema = z.object({
   N8N_SLEEPER_GRENADE_WEBHOOK_URL: z.string().default(''),
   // (The daily Bazooka send time is now an ERP-editable setting in arsenal_settings,
   // not an env var — changeable in the UI without a redeploy.)
+
+  // Phase 5b — Claude price-assist. Blank ANTHROPIC_API_KEY = the feature is
+  // DISABLED (the price-assist endpoint returns { configured: false } instead of
+  // erroring), so the API is safe to run before a key is set. ANTHROPIC_MODEL is
+  // the model id used for suggestions — overridable without a code change.
+  ANTHROPIC_API_KEY: z.string().default(''),
+  ANTHROPIC_MODEL: z.string().default('claude-3-5-sonnet-latest'),
+
+  // Phase 5c — Hermes supplier RFQ. The n8n webhook the ERP fires to email an RFQ
+  // to suppliers. Blank = the RFQ trigger is disabled (the API rejects "send" with
+  // a clear message), so the feature is safe to deploy before the webhook exists.
+  N8N_HERMES_RFQ_WEBHOOK_URL: z.string().default(''),
+
+  // n8n executions poller — real RUNNING→END sync for the Growth Engine sequence.
+  // N8N_API_URL = the instance base (https://<host>); N8N_API_KEY = a read-only n8n
+  // public API key. Blank EITHER = the feature is OFF and the strip falls back to
+  // its dispatch-based status proxy. The ERP only ever READS executions.
+  N8N_API_URL: z.string().default(''),
+  N8N_API_KEY: z.string().default(''),
+
+  // n8n→ERP run callback shared secret. An n8n stage workflow posts its autonomous
+  // run outcome to POST /arsenal/runs/callback with this token in the
+  // `x-arsenal-token` header. Blank = the callback endpoint is DISABLED (returns
+  // 503), so the feature is safe to deploy before a token is minted. This is the
+  // ONLY auth on that public (JWT-less) route — treat it like a password.
+  ARSENAL_INGEST_TOKEN: z.string().default(''),
+
+  // Key Account hot-leads webhooks. PROVISION creates a campaign's hot_leads sheet
+  // (POST {folderId}); PIPELINE intakes Interested leads + graduates customers
+  // (POST {folderId}). Blank = that ERP action is disabled. Hot-lead DATA is read
+  // via the executions backfill (N8N_API_URL/KEY), not these.
+  N8N_PROVISION_HOT_LEADS_WEBHOOK_URL: z.string().default(''),
+  N8N_HOT_LEADS_PIPELINE_WEBHOOK_URL: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

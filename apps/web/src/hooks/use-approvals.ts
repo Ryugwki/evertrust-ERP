@@ -28,7 +28,8 @@ export function useTenderApprovals(tenderId: string | undefined) {
 }
 
 // Open a PENDING approval request on the tender. Invalidates the approvals query
-// so the card reflects the new request.
+// so the card reflects the new request. Also refreshes the Phase 7 submission
+// readiness — opening a QC request makes QC required there.
 export function useRequestApproval(tenderId: string) {
   const queryClient = useQueryClient();
   return useMutation<ApprovalRequestDto, ApiError, CreateApprovalRequestDto>({
@@ -36,6 +37,9 @@ export function useRequestApproval(tenderId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.tenders.approvals(tenderId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.tenders.submission(tenderId),
       });
     },
   });
@@ -62,6 +66,10 @@ export function useDecideApproval(tenderId: string) {
       });
       void queryClient.invalidateQueries({
         queryKey: queryKeys.tenders.list(),
+      });
+      // A customer OR QC decision changes the submission gate state.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.tenders.submission(tenderId),
       });
     },
   });

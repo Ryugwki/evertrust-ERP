@@ -18,10 +18,16 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Ignore .md files in a specific folder
 docs/*.md
 
-# Ignore all .md files EXCEPT README.md + the web design standard
+# Ignore all .md files EXCEPT README.md + the web design standard + the system overview
 *.md
 !README.md
 !apps/web/DESIGN.md
+!docs/evertrust/SYSTEM-OVERVIEW.md
+!docs/evertrust/n8n-run-callback.md
+!docs/superpowers/specs/*.md
+
+# Brainstorming visual-companion scratch space
+.superpowers/
 
 # Runtime data
 pids
@@ -82,7 +88,7 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!.env.example
+.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

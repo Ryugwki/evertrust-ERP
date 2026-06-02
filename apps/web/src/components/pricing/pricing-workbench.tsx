@@ -18,6 +18,8 @@ import { StatusBadge } from '@/components/tenders/status-badge';
 import { LineItemsTable } from './line-items-table';
 import { TotalsPanel } from './totals-panel';
 import { AddLineDialog } from './add-line-dialog';
+import { SendRfqDialog } from './send-rfq-dialog';
+import { RfqHistory } from './rfq-history';
 
 // Phase 5a pricing workbench: the focused LV-pricing surface for a tender. One
 // pricing query drives BOTH the line-items table (per-line engine suggestion) and
@@ -75,27 +77,48 @@ export function PricingWorkbench({ tenderId }: { tenderId: string }) {
         <Skeleton className="h-96 w-full rounded-lg" />
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_20rem]">
-          <Card className="min-w-0">
-            <CardHeader>
-              <CardTitle className="text-base">Line items (LV)</CardTitle>
-              <CardDescription>
-                Each line shows the engine&apos;s suggested price, confidence and
-                evidence signal. Expand a row to review and add price evidence.
-              </CardDescription>
-              <Can permission="tenders:write">
-                <CardAction>
-                  <AddLineDialog tenderId={tenderId} />
-                </CardAction>
-              </Can>
-            </CardHeader>
-            <CardContent>
-              <LineItemsTable
-                tenderId={tenderId}
-                lines={pricing.data.lines}
-                currency={pricing.data.currency}
-              />
-            </CardContent>
-          </Card>
+          <div className="flex min-w-0 flex-col gap-6">
+            <Card className="min-w-0">
+              <CardHeader>
+                <CardTitle className="text-base">Line items (LV)</CardTitle>
+                <CardDescription>
+                  Each line shows the engine&apos;s suggested price, confidence and
+                  evidence signal. Expand a row to review and add price evidence.
+                </CardDescription>
+                <Can permission="tenders:write">
+                  <CardAction>
+                    <AddLineDialog tenderId={tenderId} />
+                  </CardAction>
+                </Can>
+              </CardHeader>
+              <CardContent>
+                <LineItemsTable
+                  tenderId={tenderId}
+                  lines={pricing.data.lines}
+                  currency={pricing.data.currency}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Phase 5c — Hermes supplier RFQ: request quotes + dispatch history. */}
+            <Card className="min-w-0">
+              <CardHeader>
+                <CardTitle className="text-base">Supplier RFQs</CardTitle>
+                <CardDescription>
+                  Ask suppliers to quote lines that need real evidence; replies come
+                  back as supplier quotes that turn lines GREEN.
+                </CardDescription>
+                <Can permission="pricing:write">
+                  <CardAction>
+                    <SendRfqDialog tenderId={tenderId} lines={pricing.data.lines} />
+                  </CardAction>
+                </Can>
+              </CardHeader>
+              <CardContent>
+                <RfqHistory tenderId={tenderId} />
+              </CardContent>
+            </Card>
+          </div>
 
           <TotalsPanel tenderId={tenderId} pricing={pricing.data} />
         </div>

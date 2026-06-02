@@ -8,7 +8,8 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { documents, suppliers, tenders, users } from './core';
-import { priceObsSourceEnum, pricingStatusEnum } from './enums';
+import { organizations } from './org';
+import { priceObsSourceEnum, pricingStatusEnum, rfqStatusEnum } from './enums';
 
 // Tenancy is inherited via the parent tender (lineItems.tenderId); no own
 // organizationId column.
@@ -97,5 +98,39 @@ export const pricings = pgTable(
   (t) => [
     index('pricings_tender_id_idx').on(t.tenderId),
     index('pricings_decided_by_idx').on(t.decidedBy),
+  ],
+);
+
+// Phase 5c — Hermes supplier RFQ. One row per RFQ the ERP dispatches to suppliers
+// (via the Hermes n8n/Gmail webhook) asking them to quote selected line items of a
+// tender. Org-scoped (own organizationId, like campaigns) + a tenderId FK.
+// supplierIds / lineItemIds are uuid[] SNAPSHOTS of what was asked (no element-level
+// FK; validated in the service against the org + tender) — a dispatch log, not a
+// live relation. status mirrors the ERP→n8n hand-off (DISPATCHED/FAILED); supplier
+// replies come back as SUPPLIER_QUOTE price observations, not on this row.
+export const rfqs = pgTable(
+  'rfqs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    tenderId: uuid('tender_id')
+      .notNull()
+      .references(() => tenders.id),
+    supplierIds: uuid('supplier_ids').array().notNull().default([]),
+    lineItemIds: uuid('line_item_ids').array().notNull().default([]),
+    note: text('note'),
+    status: rfqStatusEnum('status').notNull(),
+    // Human-readable webhook outcome ("HTTP 200" or the failure reason).
+    detail: text('detail'),
+    dispatchedBy: uuid('dispatched_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('rfqs_organization_id_idx').on(t.organizationId),
+    index('rfqs_tender_id_idx').on(t.tenderId),
   ],
 );
