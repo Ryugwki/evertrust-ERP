@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Send,
   Target,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -22,9 +23,14 @@ import {
   type MarketingReportPeriod,
   type MarketingStageReportDto,
 } from '@evertrust/shared';
-import { useArsenalBackfill, useMarketingReport } from '@/hooks/use-arsenal';
+import {
+  useArsenalBackfill,
+  useClearArsenalRuns,
+  useMarketingReport,
+} from '@/hooks/use-arsenal';
 import { useCampaigns } from '@/hooks/use-campaigns';
 import { Can } from '@/components/auth/can';
+import { ConfirmButton } from '@/components/common/confirm-button';
 import { PageHeader } from '@/components/common/page-header';
 import { StatTile } from '@/components/common/stat-tile';
 import { Button } from '@/components/ui/button';
@@ -85,6 +91,7 @@ export function MarketingView() {
   const campaigns = useCampaigns();
   const campaignList = campaigns.data ?? [];
   const backfill = useArsenalBackfill();
+  const clearRuns = useClearArsenalRuns();
 
   return (
     <div className="flex flex-col gap-6">
@@ -109,6 +116,19 @@ export function MarketingView() {
                 )}
                 {backfill.isPending ? 'Syncing…' : 'Sync from n8n'}
               </Button>
+              <ConfirmButton
+                trigger={
+                  <Button type="button" variant="outline" size="sm">
+                    <Trash2 />
+                    Clear runs
+                  </Button>
+                }
+                title="Clear all run activity?"
+                description="Deletes every arsenal run (Live activity + this report). Test-data reset — this can't be undone."
+                confirmLabel="Clear runs"
+                pending={clearRuns.isPending}
+                onConfirm={() => clearRuns.mutate()}
+              />
             </Can>
             <Select
               value={campaignId ?? ALL}

@@ -145,6 +145,16 @@ describe('LeadsService — manual CRUD + convert', () => {
   });
 });
 
+describe('LeadsService — clearLeads (test-data reset)', () => {
+  it('deletes all org leads and returns the count', async () => {
+    const { service } = seed();
+    await service.create(ORG_A, USER, { email: 'a@x.com' });
+    await service.create(ORG_A, USER, { email: 'b@x.com' });
+    expect(await service.clearLeads(ORG_A)).toBe(2);
+    expect(await service.list(ORG_A)).toHaveLength(0);
+  });
+});
+
 describe('LeadsService — backfill/provision gating', () => {
   it('reports not-configured when the n8n API is blank', async () => {
     const { service } = seed();

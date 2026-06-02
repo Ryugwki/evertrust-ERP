@@ -1187,6 +1187,12 @@ export type RunHotLeadsPipelineResultDto = z.infer<
   typeof RunHotLeadsPipelineResultDto
 >;
 
+// Result of a bulk "clear" (test-data reset): how many rows were deleted.
+export const ClearResultDto = z.object({
+  deleted: z.number().int().nonnegative(),
+});
+export type ClearResultDto = z.infer<typeof ClearResultDto>;
+
 // Real n8n execution status for a stage (the executions poller). RUNNING = an n8n
 // execution is in progress; SUCCESS / ERROR = the latest finished one; IDLE = none.
 export const ArsenalExecutionStatus = z.enum([

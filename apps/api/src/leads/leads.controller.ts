@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -13,6 +14,7 @@ import type { Request } from 'express';
 import { z } from 'zod';
 import {
   LeadStage,
+  type ClearResultDto,
   type LeadBackfillResultDto,
   type LeadDto,
   type ProvisionHotLeadsResultDto,
@@ -68,6 +70,23 @@ export class LeadsController {
       after: lead,
     });
     return lead as unknown as LeadDto;
+  }
+
+  // Clear all of the org's leads (test-data reset). Destructive → audited.
+  @RequirePermissions('campaigns:write')
+  @Delete()
+  async clear(
+    @OrgId() orgId: string,
+    @Req() req: Request,
+  ): Promise<ClearResultDto> {
+    const deleted = await this.leads.clearLeads(orgId);
+    setAuditContext(req, {
+      entity: 'leads',
+      entityId: orgId,
+      action: 'CLEAR',
+      after: { deleted },
+    });
+    return { deleted };
   }
 
   // Import hot leads + graduated customers from the Hot Leads Pipeline.

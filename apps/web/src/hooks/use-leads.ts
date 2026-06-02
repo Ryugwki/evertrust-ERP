@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ClearResultDto,
   CreateLeadDto,
   LeadBackfillResultDto,
   LeadDto,
@@ -62,6 +63,14 @@ export function useLeadsBackfill() {
   const invalidate = useInvalidateLeads();
   return useMutation<LeadBackfillResultDto, ApiError, void>({
     mutationFn: () => api.leads.backfill(),
+    onSuccess: invalidate,
+  });
+}
+
+export function useClearLeads() {
+  const invalidate = useInvalidateLeads();
+  return useMutation<ClearResultDto, ApiError, void>({
+    mutationFn: () => api.leads.clear(),
     onSuccess: invalidate,
   });
 }

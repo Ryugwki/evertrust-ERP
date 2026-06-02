@@ -4,6 +4,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -21,6 +22,7 @@ import {
   MarketingReportPeriod,
   type ArsenalBackfillResultDto,
   type ArsenalCallbackResultDto,
+  type ClearResultDto,
   type ArsenalExecutionsDto,
   type ArsenalRunDto,
   type ArsenalSettingsDto,
@@ -60,6 +62,23 @@ export class ArsenalController {
   @Get('runs')
   listRuns(@OrgId() orgId: string): Promise<ArsenalRunDto[]> {
     return this.arsenal.listRuns(orgId) as unknown as Promise<ArsenalRunDto[]>;
+  }
+
+  // Clear the run feed (test-data reset). Destructive → campaigns:write + audited.
+  @RequirePermissions('campaigns:write')
+  @Delete('runs')
+  async clearRuns(
+    @OrgId() orgId: string,
+    @Req() req: Request,
+  ): Promise<ClearResultDto> {
+    const deleted = await this.arsenal.clearRuns(orgId);
+    setAuditContext(req, {
+      entity: 'arsenal_runs',
+      entityId: orgId,
+      action: 'CLEAR',
+      after: { deleted },
+    });
+    return { deleted };
   }
 
   // The org's editable Growth-Engine settings (the daily Bazooka send time).

@@ -1,19 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Plus, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import {
   LeadStageLabel,
   type LeadDto,
   type LeadStage,
 } from '@evertrust/shared';
 import {
+  useClearLeads,
   useLeads,
   useLeadsBackfill,
   useRunHotLeadsPipeline,
 } from '@/hooks/use-leads';
 import { useCampaigns } from '@/hooks/use-campaigns';
 import { Can } from '@/components/auth/can';
+import { ConfirmButton } from '@/components/common/confirm-button';
 import { PageHeader } from '@/components/common/page-header';
 import {
   Card,
@@ -57,6 +59,7 @@ export function KeyAccountView() {
   const campaigns = useCampaigns();
   const backfill = useLeadsBackfill();
   const runPipeline = useRunHotLeadsPipeline();
+  const clearLeads = useClearLeads();
 
   const list = leads.data ?? [];
   const campaignList = campaigns.data ?? [];
@@ -117,6 +120,19 @@ export function KeyAccountView() {
                 <Plus />
                 Add lead
               </Button>
+              <ConfirmButton
+                trigger={
+                  <Button type="button" variant="outline" size="sm">
+                    <Trash2 />
+                    Clear leads
+                  </Button>
+                }
+                title="Clear all leads?"
+                description="Deletes every hot lead in this CRM (linked customers are kept). Test-data reset — this can't be undone."
+                confirmLabel="Clear leads"
+                pending={clearLeads.isPending}
+                onConfirm={() => clearLeads.mutate()}
+              />
             </Can>
           </div>
         }

@@ -57,6 +57,7 @@ import {
   LeadBackfillResultDto,
   ProvisionHotLeadsResultDto,
   RunHotLeadsPipelineResultDto,
+  ClearResultDto,
   type LeadStage,
 } from '@evertrust/shared';
 import { API_URL } from './env';
@@ -473,6 +474,13 @@ export const api = {
         schema: ArsenalBackfillResultDto,
       }),
 
+    // Clear the run feed (test-data reset).
+    clearRuns: () =>
+      request<ClearResultDto>('/arsenal/runs', {
+        method: 'DELETE',
+        schema: ClearResultDto,
+      }),
+
     // Fire a stage's n8n webhook (records + returns the run; status DISPATCHED |
     // FAILED). campaignId is required for PER_CAMPAIGN stages.
     run: (stage: ArsenalStage, input: z.infer<typeof RunArsenalDto>) =>
@@ -551,6 +559,13 @@ export const api = {
         method: 'POST',
         body: campaignId ? { campaignId } : {},
         schema: RunHotLeadsPipelineResultDto,
+      }),
+
+    // Clear all leads (test-data reset).
+    clear: () =>
+      request<ClearResultDto>('/leads', {
+        method: 'DELETE',
+        schema: ClearResultDto,
       }),
   },
 

@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
 import {
   ARSENAL_STAGE_META,
@@ -65,6 +65,23 @@ export class ArsenalService {
     return rows
       .filter((r) => r.organizationId === orgId || r.organizationId === null)
       .slice(0, 50);
+  }
+
+  // Clear the run feed (test-data reset): deletes the org's arsenal_runs PLUS the
+  // global (null-org) scheduled runs that show in its Live activity. Returns the
+  // count removed.
+  async clearRuns(orgId: string): Promise<number> {
+    const all = await this.db.select().from(schema.arsenalRuns);
+    const count = all.filter(
+      (r) => r.organizationId === orgId || r.organizationId === null,
+    ).length;
+    await this.db
+      .delete(schema.arsenalRuns)
+      .where(eq(schema.arsenalRuns.organizationId, orgId));
+    await this.db
+      .delete(schema.arsenalRuns)
+      .where(isNull(schema.arsenalRuns.organizationId));
+    return count;
   }
 
   // The org's Growth-Engine settings (the editable daily Bazooka time + timezone).

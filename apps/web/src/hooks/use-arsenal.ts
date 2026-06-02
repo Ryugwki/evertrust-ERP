@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ArsenalBackfillResultDto,
+  ClearResultDto,
   ArsenalExecutionsDto,
   ArsenalRunDto,
   ArsenalSettingsDto,
@@ -76,6 +77,17 @@ export function useArsenalBackfill() {
   const queryClient = useQueryClient();
   return useMutation<ArsenalBackfillResultDto, ApiError, void>({
     mutationFn: () => api.arsenal.backfill(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.arsenal.all });
+    },
+  });
+}
+
+// Clear the run feed (test-data reset). Invalidates the whole arsenal tree.
+export function useClearArsenalRuns() {
+  const queryClient = useQueryClient();
+  return useMutation<ClearResultDto, ApiError, void>({
+    mutationFn: () => api.arsenal.clearRuns(),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.arsenal.all });
     },

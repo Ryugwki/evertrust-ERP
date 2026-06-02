@@ -310,6 +310,19 @@ export class LeadsService {
     return { configured: true, ok: res.ok, detail: res.detail };
   }
 
+  // Clear all of the org's leads (test-data reset). Returns the count removed.
+  // Leaves any linked customers in place (they're an ERP system-of-record entity).
+  async clearLeads(orgId: string): Promise<number> {
+    const rows = await this.db
+      .select()
+      .from(schema.leads)
+      .where(tenantScope(orgId, schema.leads));
+    await this.db
+      .delete(schema.leads)
+      .where(tenantScope(orgId, schema.leads));
+    return rows.length;
+  }
+
   // --- helpers -------------------------------------------------------------
 
   private async upsertFromRow(

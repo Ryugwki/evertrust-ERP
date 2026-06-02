@@ -451,6 +451,20 @@ describe('ArsenalService — recordCallback stores metrics', () => {
   });
 });
 
+describe('ArsenalService — clearRuns (test-data reset)', () => {
+  it('deletes the org runs (+ global), keeps other orgs', async () => {
+    const { service, arsenalRuns } = seed();
+    arsenalRuns.rows.push(
+      runRow({ stage: 'LEAD_SATELLITE', status: 'SUCCESS', org: ORG_A }),
+      runRow({ stage: 'REACH_BAZOOKA', status: 'SUCCESS', org: ORG_A }),
+      runRow({ stage: 'REACH_BAZOOKA', status: 'SUCCESS', org: ORG_B }),
+    );
+    const deleted = await service.clearRuns(ORG_A);
+    expect(deleted).toBe(2);
+    expect(arsenalRuns.rows.map((r) => r.organizationId)).toEqual([ORG_B]);
+  });
+});
+
 describe('ArsenalService — settings (editable daily time + timezone)', () => {
   // WHY: the daily Bazooka time + zone are ERP-editable settings, not env config.
   // They default off, upsert in place, and are org-scoped.
