@@ -60,6 +60,32 @@
   .quote{border-left:2px solid var(--line);padding-left:10px;color:#cfd0d6;font-size:12.5px;font-style:italic;margin:6px 0}
   .ln{font-size:12.5px;margin:4px 0}.ln b{color:var(--muted);font-weight:600}
   .flag{color:var(--low)}
+  /* nested coaching accordion: Main → Sub → detail */
+  .acctools{display:flex;gap:8px;margin:2px 0 14px}
+  .acctools button{font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer}
+  .acctools button:hover{color:var(--txt);border-color:rgba(56,189,248,.4)}
+  details.m1{border:1px solid var(--line);border-radius:12px;background:var(--panel2);margin-bottom:10px;overflow:hidden}
+  details.m1>summary{list-style:none;cursor:pointer;padding:13px 15px;display:flex;align-items:center;gap:11px;font-size:14px;font-weight:700;user-select:none}
+  details.m1>summary::-webkit-details-marker{display:none}
+  details.m1>summary:before{content:"▸";color:var(--faint);font-size:11px}
+  details.m1[open]>summary:before{content:"▾"}
+  details.m1>summary .ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:14px}
+  details.m1>summary .sc{margin-left:auto;display:flex;align-items:center;gap:9px}
+  .cnt{font-size:11px;color:var(--faint);font-weight:600}
+  .scbadge{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px}
+  .m1b{padding:4px 13px 12px}
+  details.m2{border:1px solid var(--line);border-radius:9px;background:var(--panel);margin-bottom:7px;overflow:hidden}
+  details.m2:last-child{margin-bottom:0}
+  details.m2.good-edge{box-shadow:inset 3px 0 0 var(--good)}
+  details.m2.improve-edge{box-shadow:inset 3px 0 0 var(--mid)}
+  details.m2>summary{list-style:none;cursor:pointer;padding:10px 13px;display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;user-select:none}
+  details.m2>summary::-webkit-details-marker{display:none}
+  details.m2>summary:before{content:"▸";color:var(--faint);font-size:10px}
+  details.m2[open]>summary:before{content:"▾"}
+  details.m2>summary .sc{margin-left:auto}
+  .m2b{padding:4px 13px 12px 30px}
+  .m2b .bar{margin-top:2px}
+  .m2b p{margin:8px 0 0;color:var(--muted);font-size:12.5px}
   .note{margin-top:16px;color:var(--faint);font-size:11px;text-align:center}
 </style>
 </head>
@@ -167,6 +193,13 @@ function tenderHTML(t){
     <div class="topt best"><div><div class="tt">✨ ${t.best.name} <span class="match">· ${t.best.match} match</span></div><div class="ts">${t.best.meta}</div></div><button class="lk">Link</button></div>
     ${t.others.map(o=>`<div class="topt"><div><div class="tt">${o.name}</div><div class="ts">${o.meta}</div></div><button class="lk">Link</button></div>`).join("")}</div>`;
 }
+// nested coaching helpers: Main → Sub → detail
+function scoreBadge(s){const c=col(parseFloat(s));return `<span class="scbadge" style="background:${HEX[c]}22;color:${HEX[c]}">${s}/5</span>`;}
+function m1(ico,bg,name,scHtml,bodyHtml){return `<details class="m1"><summary><span class="ico" style="background:${bg}">${ico}</span>${name}<span class="sc">${scHtml}</span></summary><div class="m1b">${bodyHtml}</div></details>`;}
+function m2dim(d){const c=col(d.s);return `<details class="m2"><summary>${d.n}<span class="sc">${scoreBadge(d.s)}</span></summary><div class="m2b"><div class="bar"><i style="width:${pct(d.s)}%;background:${HEX[c]}"></i></div>${d.note?`<p>${d.note}</p>`:`<p style="color:var(--faint)">No extra note for this area.</p>`}</div></details>`;}
+function m2worked(w){return `<details class="m2 good-edge"><summary>${w.n} · ${w.t}<span class="meth">${w.m}</span></summary><div class="m2b"><p class="quote">"${w.q}"</p><div class="ln"><b>Why:</b> ${w.w}</div></div></details>`;}
+function m2improve(w){return `<details class="m2 improve-edge"><summary>${w.n} · ${w.t}<span class="meth">${w.m}</span></summary><div class="m2b">${w.wh?`<div class="ln"><b>What happened:</b> ${w.wh}</div>`:""}<div class="ln"><b>Try:</b> ${w.tr}</div></div></details>`;}
+function allDet(open){document.querySelectorAll("#coach details").forEach(d=>d.open=open);}
 function render(){
   const m = MEETINGS.find(x=>x.id===cur);
   document.getElementById("deth").innerHTML =
@@ -182,12 +215,11 @@ function render(){
      <div class="label">Tender</div>${tenderHTML(m.tender)}`;
   document.getElementById("coach").innerHTML =
     `<div class="overall">${ringHTML(m.ae.o,"AE performance")}${ringHTML(m.cl.o,"Client analysis")}<div style="color:var(--muted);font-size:12.5px;max-width:320px">${m.headline}</div></div>
-     <div class="label">AE performance scores</div>${m.ae.dims.map(dimHTML).join("")}
-     <div class="label">Client analysis</div>${m.cl.dims.map(dimHTML).join("")}
-     <div class="label">What worked <span style="text-transform:none;letter-spacing:0;color:var(--faint)">— click to expand</span></div>
-     ${m.worked.map((w,i)=>`<details class="item good-edge"${i===0?" open":""}><summary>${w.n} · ${w.t} <span class="meth">${w.m}</span></summary><div class="body"><p class="quote">"${w.q}"</p><div class="ln"><b>Why:</b> ${w.w}</div></div></details>`).join("")}
-     <div class="label">What to improve</div>
-     ${m.improve.map((w,i)=>`<details class="item improve-edge"${i===0?" open":""}><summary>${w.n} · ${w.t} <span class="meth">${w.m}</span></summary><div class="body">${w.wh?`<div class="ln"><b>What happened:</b> ${w.wh}</div>`:""}<div class="ln"><b>Try:</b> ${w.tr}</div></div></details>`).join("")}
+     <div class="acctools"><button onclick="allDet(true)">⤢ Expand all</button><button onclick="allDet(false)">⤡ Collapse all</button></div>
+     ${m1("📊","rgba(56,189,248,.14)","AE performance",scoreBadge(m.ae.o)+`<span class="cnt">${m.ae.dims.length} areas</span>`, m.ae.dims.map(m2dim).join(""))}
+     ${m1("🧭","rgba(167,139,250,.14)","Client analysis",scoreBadge(m.cl.o)+`<span class="cnt">${m.cl.dims.length} areas</span>`, m.cl.dims.map(m2dim).join(""))}
+     ${m1("✅","rgba(52,211,153,.14)","What worked",`<span class="cnt">${m.worked.length} highlights</span>`, m.worked.map(m2worked).join(""))}
+     ${m1("🔧","rgba(251,191,36,.14)","What to improve",`<span class="cnt">${m.improve.length} suggestions</span>`, m.improve.map(m2improve).join(""))}
      <div style="margin-top:14px;color:var(--faint);font-size:11.5px">AI confidence ${m.conf} · scored from the Read AI transcript · workflow run ${m.run}</div>`;
   // restore active tab
   document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("on", p.id===curTab));
