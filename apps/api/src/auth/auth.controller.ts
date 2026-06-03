@@ -27,10 +27,13 @@ export class AuthController {
   ): Promise<LoginResponseDto> {
     const result = await this.auth.login(body);
 
+    const sameSite = this.config.get('COOKIE_SAMESITE');
     res.cookie('access_token', result.accessToken, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: this.config.get('COOKIE_SECURE'),
+      sameSite,
+      // Browsers only honor SameSite=None when the cookie is also Secure, so
+      // force it on in that case (cross-site deploys are always over HTTPS).
+      secure: this.config.get('COOKIE_SECURE') || sameSite === 'none',
       path: '/',
     });
 

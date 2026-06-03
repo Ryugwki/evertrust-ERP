@@ -23,6 +23,12 @@ export const EnvSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
+  // SameSite for the auth cookie. Use 'none' (with COOKIE_SECURE=true) when the
+  // web and API live on DIFFERENT sites (e.g. *.vercel.app + *.onrender.com) so
+  // the session cookie can cross origins. 'lax' is correct for same-site (a shared
+  // root domain like app./api.evertrust-germany.de) and for local dev.
+  COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
+
   // Filesystem directory where uploaded tender documents are stored (Phase 4).
   // Created at boot if missing. In containers this is a mounted volume.
   UPLOAD_DIR: z.string().min(1).default('./uploads'),
