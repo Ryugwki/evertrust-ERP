@@ -5,19 +5,21 @@
 # this file and provisions the Postgres DB, the API service, and its upload disk.
 # Then fill the `sync: false` secrets in the dashboard and trigger a deploy.
 #
+# FREE-TIER config ($0): free Postgres + free web service, no persistent disk.
+# Tradeoffs: the API sleeps after ~15 min idle (cold starts), the DB is auto-deleted
+# after ~30 days, and uploads go to ephemeral /tmp (lost on restart). Upgrade later
+# by setting db.plan: basic-256mb, plan: starter, and re-adding the disk block.
+#
 # Notes baked in from the repo:
 #  - dockerfilePath/dockerContext mirror infra/docker-compose.yml (context = repo root).
-#  - dockerCommand = the api start command from compose (the Dockerfile CMD is a
-#    placeholder `node --version`, so it MUST be set here).
-#  - preDeployCommand runs Drizzle migrations before each deploy (the `migrate`
-#    one-shot in compose). It also enables pgvector via migration 0000.
-#  - Seeding the first admin user is a ONE-TIME manual step (see README below),
-#    not in preDeploy, so it never re-runs.
+#  - Free tier has no pre-deploy hook and no Shell, so dockerCommand runs Drizzle
+#    migrate + seed (both idempotent) at startup, then launches the API. migrate
+#    also enables pgvector via migration 0000; seed creates the bootstrap admin once.
 #  - The app listens on Render's injected $PORT automatically (config reads PORT).
 
 databases:
   - name: evertrust-db
-    plan: basic-256mb        # free expires after ~30 days; basic-256mb is persistent. Adjust as needed.
+    plan: free               # FREE: auto-deleted after ~30 days, 1GB, no backups. Upgrade -> basic-256mb.
     postgresMajorVersion: "16"
     region: frankfurt        # EU data residency (Evertrust GmbH). Keep API in the same region.
 
@@ -26,17 +28,16 @@ services:
     name: evertrust-api
     runtime: docker
     region: frankfurt
-    plan: starter            # always-on (free web services sleep on idle → API + n8n poller would stop).
+    plan: free               # FREE: sleeps after ~15 min idle (cold starts). Upgrade -> starter for always-on.
     dockerfilePath: ./infra/Dockerfile.node
     dockerContext: .
-    dockerCommand: corepack pnpm --filter @evertrust/db exec node --import tsx /app/apps/api/dist/main.js
-    preDeployCommand: corepack pnpm --filter @evertrust/db db:migrate
+    # Free tier has no pre-deploy hook / Shell, so run migrate + seed (both
+    # idempotent) at startup, then launch the API. Safe to re-run every cold start.
+    dockerCommand: corepack pnpm --filter @evertrust/db db:migrate && corepack pnpm --filter @evertrust/db db:seed && corepack pnpm --filter @evertrust/db exec node --import tsx /app/apps/api/dist/main.js
     healthCheckPath: /health
     autoDeploy: true
-    disk:
-      name: uploads
-      mountPath: /var/data/uploads   # tender document storage (multer diskStorage)
-      sizeGB: 1
+    # (no persistent disk — free instances can't attach one; uploads use ephemeral
+    # /tmp and are lost on restart. Add a disk + a paid plan for durable uploads.)
     envVars:
       # --- core ---------------------------------------------------------------
       - key: DATABASE_URL
@@ -44,7 +45,7 @@ services:
           name: evertrust-db
           property: connectionString
       - key: UPLOAD_DIR
-        value: /var/data/uploads
+        value: /tmp/uploads
       - key: JWT_SECRET
         generateValue: true            # Render generates a strong secret
       - key: JWT_EXPIRES_IN
