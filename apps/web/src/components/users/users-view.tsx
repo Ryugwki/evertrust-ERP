@@ -190,20 +190,22 @@ export function UsersView() {
             </div>
           </Card>
 
-          {/* right: detail / editor */}
-          <Card>
-            <CardContent className="pt-6">
-              {users.isLoading ? (
-                <Skeleton className="h-80 w-full" />
-              ) : selected ? (
-                <UserDetailPanel key={selected.id} user={selected} />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No team members yet.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          {/* right: detail / editor (renders its own grouped cards) */}
+          <div className="min-w-0">
+            {users.isLoading ? (
+              <Skeleton className="h-96 w-full rounded-xl" />
+            ) : selected ? (
+              <UserDetailPanel key={selected.id} user={selected} />
+            ) : (
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-muted-foreground">
+                    No team members yet.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       )}
     </div>

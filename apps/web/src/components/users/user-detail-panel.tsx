@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { ChevronRight, ExternalLink } from 'lucide-react';
@@ -67,11 +73,42 @@ function initials(name: string): string {
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
 
+// Small uppercase section heading, shared across the panel's cards.
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      {children}
+    </h3>
+  );
+}
+
+// A labelled form field (label + control + optional hint), used in the grids.
+function Field({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
+
 // Inline detail/editor for the selected team member (right pane of the two-pane
-// Users page). Edits role/position/department + the permission grid in one Save
-// (PATCH /admin/users/:id); (de)activation is a separate immediate action. Role
-// is locked for an existing Super Admin, who always keeps full access. Backed by
-// real data — there is no hard-delete endpoint, so the danger zone deactivates.
+// Users page). Grouped into cards — Identity + Details + Access, Permissions, a
+// sticky Save bar, and a Danger zone — so the form reads as one cohesive whole.
+// Edits save in one PATCH /admin/users/:id; (de)activate + delete are separate.
 export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   const { data: me } = useMe();
   const update = useUpdateUser();
@@ -159,7 +196,7 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
     );
   }
 
-  // (De)activation. The API also enforces these guards.
+  // (De)activation + delete. The API also enforces these guards.
   const isSelf = me?.id === user.id;
   const isSuperAdmin = user.role === 'SUPER_ADMIN';
   const blockDeactivate = isSelf || isSuperAdmin;
@@ -189,173 +226,179 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* identity header */}
-      <div className="flex items-start gap-3">
-        <Avatar className="size-12">
-          <AvatarFallback className={cn('text-sm font-medium', styles.tint)}>
-            {initials(user.name)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-semibold leading-tight">
-              {user.name}
-            </span>
-            <Badge
-              className={cn('gap-1.5 border-transparent font-medium', styles.tint)}
-            >
-              <span className={cn('size-1.5 rounded-full', styles.dot)} />
-              {ROLE_LABELS[user.role]}
-            </Badge>
-            {!user.active ? (
-              <Badge variant="outline" className="text-muted-foreground">
-                Inactive
+    <div className="flex flex-col gap-4">
+      {/* identity + editable fields */}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex flex-wrap items-start gap-4 border-b bg-muted/20 p-5">
+          <Avatar className="size-14">
+            <AvatarFallback className={cn('text-base font-semibold', styles.tint)}>
+              {initials(user.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-lg font-semibold leading-tight">
+                {user.name}
+              </span>
+              <Badge
+                className={cn(
+                  'gap-1.5 border-transparent font-medium',
+                  styles.tint,
+                )}
+              >
+                <span className={cn('size-1.5 rounded-full', styles.dot)} />
+                {ROLE_LABELS[user.role]}
               </Badge>
-            ) : null}
+              <Badge
+                variant="outline"
+                className={cn(
+                  'gap-1.5',
+                  user.active
+                    ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                    : 'text-muted-foreground',
+                )}
+              >
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    user.active ? 'bg-emerald-500' : 'bg-muted-foreground',
+                  )}
+                />
+                {user.active ? 'Active' : 'Inactive'}
+              </Badge>
+            </div>
+            <p className="truncate text-sm text-muted-foreground">
+              {user.email}
+            </p>
           </div>
-          <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+          {isSelf ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/users/${user.id}`}>
+                View profile
+                <ExternalLink className="ml-1 size-3.5" />
+              </Link>
+            </Button>
+          ) : null}
         </div>
-        {me?.id === user.id ? (
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/users/${user.id}`}>
-              View profile
-              <ExternalLink className="ml-1 size-3.5" />
-            </Link>
-          </Button>
-        ) : null}
-      </div>
 
-      {/* details: name (any users:manage) + email (Super Admin only) */}
-      <div className="flex flex-col gap-3">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-          Details
-        </Label>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="detail-name" className="text-xs text-muted-foreground">
-              Name
-            </Label>
-            <Input
-              id="detail-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label
+        <div className="flex flex-col gap-4 p-5">
+          <SectionTitle>Details</SectionTitle>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Name" htmlFor="detail-name">
+              <Input
+                id="detail-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </Field>
+            <Field
+              label="Email"
               htmlFor="detail-email"
-              className="text-xs text-muted-foreground"
+              hint={
+                !canEditEmail ? 'Only a Super Admin can change email.' : undefined
+              }
             >
-              Email
-            </Label>
-            <Input
-              id="detail-email"
-              type="email"
-              value={canEditEmail ? email : user.email}
-              disabled={!canEditEmail}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            {!canEditEmail ? (
-              <p className="text-xs text-muted-foreground">
-                Only a Super Admin can change email.
-              </p>
-            ) : null}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="detail-phone" className="text-xs text-muted-foreground">
-              Phone
-            </Label>
-            <Input
-              id="detail-phone"
-              type="tel"
-              value={phone}
-              placeholder="—"
-              onChange={(e) => setPhone(e.target.value)}
-            />
+              <Input
+                id="detail-email"
+                type="email"
+                value={canEditEmail ? email : user.email}
+                disabled={!canEditEmail}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </Field>
+            <Field label="Phone" htmlFor="detail-phone">
+              <Input
+                id="detail-phone"
+                type="tel"
+                value={phone}
+                placeholder="—"
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </Field>
           </div>
         </div>
-      </div>
 
-      {/* access */}
-      <div className="flex flex-col gap-3">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-          Access
-        </Label>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Role</Label>
-            <Select value={role} disabled={roleLocked} onValueChange={onRoleChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {UserRole.options.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {ROLE_LABELS[r]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {roleLocked ? (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                🔒 Super Admin role is locked
-              </p>
-            ) : null}
-          </div>
+        <Separator />
 
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Position</Label>
-            <Select
-              value={position ?? NONE}
-              onValueChange={(v) =>
-                setPosition(v === NONE ? null : (v as Position))
-              }
+        <div className="flex flex-col gap-4 p-5">
+          <SectionTitle>Access</SectionTitle>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field
+              label="Role"
+              hint={roleLocked ? '🔒 Super Admin role is locked' : undefined}
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>— None —</SelectItem>
-                {Position.options.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {POSITION_LABELS[p]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Department</Label>
-            <Select
-              value={department ?? NONE}
-              onValueChange={(v) =>
-                setDepartment(v === NONE ? null : (v as Department))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>— None —</SelectItem>
-                {Department.options.map((d) => (
-                  <SelectItem key={d} value={d}>
-                    {DEPARTMENT_LABELS[d]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select
+                value={role}
+                disabled={roleLocked}
+                onValueChange={onRoleChange}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UserRole.options.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Position">
+              <Select
+                value={position ?? NONE}
+                onValueChange={(v) =>
+                  setPosition(v === NONE ? null : (v as Position))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>— None —</SelectItem>
+                  {Position.options.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {POSITION_LABELS[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Department">
+              <Select
+                value={department ?? NONE}
+                onValueChange={(v) =>
+                  setDepartment(v === NONE ? null : (v as Department))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>— None —</SelectItem>
+                  {Department.options.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {DEPARTMENT_LABELS[d]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
           </div>
         </div>
       </div>
 
       {/* permissions */}
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Permissions
-          </Label>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 p-4">
+          <div>
+            <SectionTitle>Permissions</SectionTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {formIsSuperAdmin
+                ? 'Super Admin always has full access.'
+                : 'What this member can see and do.'}
+            </p>
+          </div>
           <div className="flex items-center gap-1">
             <Button
               type="button"
@@ -388,30 +431,32 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
             ) : null}
           </div>
         </div>
-        {formIsSuperAdmin ? (
-          <p className="text-xs text-muted-foreground">
-            Super Admin always has full access — permissions aren&apos;t editable.
-          </p>
-        ) : null}
-        <div
-          ref={permRef}
-          className="flex max-h-80 flex-col gap-2 overflow-y-auto rounded-lg border p-2"
-        >
+        <div ref={permRef} className="flex flex-col gap-2 p-3">
           {PERMISSION_GROUPS.map(({ resource, perms }) => {
             const granted = perms.filter((p) => shown.has(p)).length;
+            const full = granted === perms.length;
             return (
               <details
                 key={resource}
-                className="group rounded-md border bg-muted/20 [&_summary::-webkit-details-marker]:hidden"
+                className="group rounded-lg border bg-muted/20 [&_summary::-webkit-details-marker]:hidden"
               >
-                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm">
                   <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
                   <span className="font-medium capitalize">{resource}</span>
-                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                  <span
+                    className={cn(
+                      'ml-auto rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums',
+                      full
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : granted === 0
+                          ? 'bg-muted text-muted-foreground'
+                          : 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+                    )}
+                  >
                     {granted}/{perms.length}
                   </span>
                 </summary>
-                <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 pb-3 pl-9">
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 border-t px-3 py-3 pl-9">
                   {perms.map((p) => {
                     const action = p.split(':')[1] ?? p;
                     return (
@@ -438,28 +483,40 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
             );
           })}
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            onClick={save}
-            disabled={!dirty || update.isPending}
-          >
-            {update.isPending ? 'Saving…' : 'Save changes'}
-          </Button>
-          {dirty ? (
-            <span className="text-xs text-muted-foreground">Unsaved changes</span>
-          ) : null}
-        </div>
       </div>
 
-      <Separator />
+      {/* sticky save bar */}
+      <div className="sticky bottom-3 z-10 flex items-center gap-3 rounded-xl border bg-card/90 px-4 py-3 shadow-sm backdrop-blur">
+        <span className="truncate text-sm font-medium">{user.name}</span>
+        {dirty ? (
+          <span className="text-xs text-amber-600 dark:text-amber-400">
+            Unsaved changes
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            All changes saved
+          </span>
+        )}
+        <Button
+          className="ml-auto"
+          type="button"
+          onClick={save}
+          disabled={!dirty || update.isPending}
+        >
+          {update.isPending ? 'Saving…' : 'Save changes'}
+        </Button>
+      </div>
 
       {/* danger zone */}
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5">
         <p className="text-xs font-medium uppercase tracking-wider text-destructive">
           Danger zone
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
+        <p className="mt-1 text-xs text-muted-foreground">
+          {blockReason ??
+            'Deactivate keeps the record + history; delete removes the account entirely.'}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {user.active ? (
             <Button
               type="button"
@@ -506,11 +563,6 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
               })
             }
           />
-
-          <span className="text-xs text-muted-foreground">
-            {blockReason ??
-              'Deactivate keeps history; delete removes the account entirely.'}
-          </span>
         </div>
       </div>
     </div>
