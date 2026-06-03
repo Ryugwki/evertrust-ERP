@@ -570,6 +570,20 @@ export const UpdateUserDto = z.object({
 });
 export type UpdateUserDto = z.infer<typeof UpdateUserDto>;
 
+// Create a new user from the management page. This ERP has no public register
+// flow, so an admin (users:manage) sets the initial password here; the API
+// creates the user + an argon2 credential. Email must be globally unique.
+export const CreateUserDto = z.object({
+  name: z.string().trim().min(1).max(200),
+  email: z.string().trim().email(),
+  password: z.string().min(8).max(200),
+  role: UserRole.default('EMPLOYEE'),
+  position: Position.nullable().optional(),
+  department: Department.nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+});
+export type CreateUserDto = z.infer<typeof CreateUserDto>;
+
 // ---- Tender assignment (manual L5-PIC assign) ----
 // Body for POST /tenders/:id/assign. reason is optional context (<= 500 chars).
 export const AssignTenderDto = z.object({

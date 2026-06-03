@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AdminUserDto,
+  CreateUserDto,
   ApprovalRequestDto,
   ArsenalBackfillResultDto,
   ArsenalExecutionsDto,
@@ -415,6 +416,21 @@ export const api = {
         method: 'PATCH',
         body: UpdateUserDto.parse(input),
         schema: AdminUserDto,
+      }),
+
+    // Create a new user (admin sets the initial password — no register flow).
+    create: (input: z.infer<typeof CreateUserDto>) =>
+      request<AdminUserDto>('/admin/users', {
+        method: 'POST',
+        body: CreateUserDto.parse(input),
+        schema: AdminUserDto,
+      }),
+
+    // Hard-delete a user (server guards self / Super Admin; 409 if referenced).
+    remove: (id: string) =>
+      request<{ id: string }>(`/admin/users/${id}`, {
+        method: 'DELETE',
+        schema: z.object({ id: z.string() }),
       }),
   },
 

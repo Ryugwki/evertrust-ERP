@@ -6,10 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
+import * as argon2 from 'argon2';
 import { schema } from '@evertrust/db';
 import { effectivePermissions } from '@evertrust/shared';
 import type {
   AdminUserDto,
+  CreateUserDto,
   Department,
   MeDto,
   Permission,
@@ -255,5 +257,111 @@ export class UsersService {
         createdAt: new Date(after.createdAt).toISOString(),
       },
     };
+  }
+
+  // Create a new user + their argon2 login credential, in one transaction. No
+  // public register flow exists, so a users:manage admin sets the initial
+  // password here. Email must be globally unique (409 on clash).
+  async createUser(orgId: string, dto: CreateUserDto): Promise<AdminUserDto> {
+    const existing = await this.db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, dto.email))
+      .limit(1);
+    if (existing[0]) {
+      throw new ConflictException('That email is already in use');
+    }
+
+    const passwordHash = await argon2.hash(dto.password);
+    const selection = {
+      id: schema.users.id,
+      name: schema.users.name,
+      email: schema.users.email,
+      phone: schema.users.phone,
+      role: schema.users.role,
+      position: schema.users.position,
+      department: schema.users.department,
+      permissions: schema.users.permissions,
+      active: schema.users.active,
+      createdAt: schema.users.createdAt,
+    };
+
+    const created = await this.db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(schema.users)
+        .values({
+          organizationId: orgId,
+          name: dto.name,
+          email: dto.email,
+          phone: dto.phone ?? null,
+          role: dto.role,
+          position: dto.position ?? null,
+          department: dto.department ?? null,
+        })
+        .returning(selection);
+      const user = rows[0];
+      if (!user) throw new Error('Failed to create user');
+      await tx
+        .insert(schema.authCredentials)
+        .values({ userId: user.id, passwordHash });
+      return user;
+    });
+
+    return {
+      ...created,
+      permissions: created.permissions as Permission[] | null,
+      createdAt: new Date(created.createdAt).toISOString(),
+    };
+  }
+
+  // Hard-delete a user + their credential (tenant-scoped, transactional). Guards:
+  // never yourself, never a Super Admin. A user referenced by historical records
+  // (audit actor, leads, pricing, …) can't be removed — we surface a 409 telling
+  // the admin to deactivate instead, preserving the audit trail.
+  async deleteUser(
+    orgId: string,
+    actingUserId: string,
+    userId: string,
+  ): Promise<{ name: string; email: string }> {
+    const scope = and(
+      tenantScope(orgId, schema.users),
+      eq(schema.users.id, userId),
+    );
+    const rows = await this.db
+      .select({
+        name: schema.users.name,
+        email: schema.users.email,
+        role: schema.users.role,
+      })
+      .from(schema.users)
+      .where(scope)
+      .limit(1);
+    const prev = rows[0];
+    if (!prev) throw new NotFoundException('User not found');
+    if (userId === actingUserId) {
+      throw new ForbiddenException('You cannot delete your own account');
+    }
+    if (prev.role === 'SUPER_ADMIN') {
+      throw new ForbiddenException('A Super Admin cannot be deleted');
+    }
+
+    try {
+      await this.db.transaction(async (tx) => {
+        await tx
+          .delete(schema.authCredentials)
+          .where(eq(schema.authCredentials.userId, userId));
+        await tx.delete(schema.users).where(scope);
+      });
+    } catch (err) {
+      // 23503 = FK violation: the user is referenced by historical records.
+      if ((err as { code?: string })?.code === '23503') {
+        throw new ConflictException(
+          'This user has linked activity and can’t be deleted. Deactivate them instead.',
+        );
+      }
+      throw err;
+    }
+
+    return { name: prev.name, email: prev.email };
   }
 }

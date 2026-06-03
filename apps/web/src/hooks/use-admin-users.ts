@@ -1,7 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AdminUserDto, UpdateUserDto } from '@evertrust/shared';
+import type {
+  AdminUserDto,
+  CreateUserDto,
+  UpdateUserDto,
+} from '@evertrust/shared';
 import { ApiError, api } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -23,6 +27,32 @@ export function useUpdateUser() {
     onSuccess: (saved) => {
       queryClient.setQueryData<AdminUserDto[]>(queryKeys.adminUsers.list(), (prev) =>
         prev?.map((u) => (u.id === saved.id ? saved : u)),
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers.all });
+    },
+  });
+}
+
+// Create a new user (admin-set initial password — this ERP has no register flow).
+export function useCreateUser() {
+  const queryClient = useQueryClient();
+  return useMutation<AdminUserDto, ApiError, CreateUserDto>({
+    mutationFn: (input) => api.adminUsers.create(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers.all });
+    },
+  });
+}
+
+// Hard-delete a user. Drops the row from the cached list, then invalidates.
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation<{ id: string }, ApiError, string>({
+    mutationFn: (id) => api.adminUsers.remove(id),
+    onSuccess: ({ id }) => {
+      queryClient.setQueryData<AdminUserDto[]>(
+        queryKeys.adminUsers.list(),
+        (prev) => prev?.filter((u) => u.id !== id),
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers.all });
     },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 import {
   DEPARTMENT_LABELS,
   POSITION_LABELS,
@@ -10,12 +11,14 @@ import {
 import { useAdminUsers } from '@/hooks/use-admin-users';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common/page-header';
 import { cn } from '@/lib/utils';
 import { ROLE_STYLES } from './role-styles';
+import { UserCreateDialog } from './user-create-dialog';
 import { UserDetailPanel } from './user-detail-panel';
 
 type Filter = 'all' | 'admins' | 'managers' | 'employees' | 'inactive';
@@ -60,6 +63,7 @@ export function UsersView() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -87,6 +91,12 @@ export function UsersView() {
             : `Team & access · ${data.length} member${
                 data.length === 1 ? '' : 's'
               } · ${activeCount} active`
+        }
+        actions={
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="size-4" />
+            Add user
+          </Button>
         }
       />
 

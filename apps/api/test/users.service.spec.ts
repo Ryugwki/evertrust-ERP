@@ -54,8 +54,14 @@ function seed() {
       __seq: 3,
     },
   ]);
-  const { db } = makeFakeDb(new Map<unknown, FakeTable>([[schema.users, users]]));
-  return { service: new UsersService(db), users };
+  const creds = new FakeTable([]);
+  const { db } = makeFakeDb(
+    new Map<unknown, FakeTable>([
+      [schema.users, users],
+      [schema.authCredentials, creds],
+    ]),
+  );
+  return { service: new UsersService(db), users, creds };
 }
 
 describe('UsersService — admin directory (listAllForOrg)', () => {
@@ -263,5 +269,64 @@ describe('UsersService — updateUser per-user permissions', () => {
     await expect(
       service.updateUser(ORG_A, BOB, BOB, { permissions: ['tenders:read'] }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('UsersService — createUser', () => {
+  it('creates a user + an argon2 credential and returns the new row', async () => {
+    const { service, creds } = seed();
+    const after = await service.createUser(ORG_A, {
+      name: 'Carl New',
+      email: 'carl@evertrust-germany.de',
+      password: 'Password123!',
+      role: 'EMPLOYEE',
+    });
+    expect(after.email).toBe('carl@evertrust-germany.de');
+    expect(after.role).toBe('EMPLOYEE');
+    expect(creds.rows.some((c) => c.userId === after.id)).toBe(true);
+  });
+
+  it('rejects a duplicate email (409)', async () => {
+    const { service } = seed();
+    await expect(
+      service.createUser(ORG_A, {
+        name: 'Dup',
+        email: 'alice@evertrust-germany.de',
+        password: 'Password123!',
+        role: 'EMPLOYEE',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('UsersService — deleteUser', () => {
+  it('deletes a normal user and their credential', async () => {
+    const { service, users, creds } = seed();
+    creds.rows.push({ userId: BOB, passwordHash: 'x' });
+    const res = await service.deleteUser(ORG_A, ALICE, BOB);
+    expect(res.email).toBe('bob@evertrust-germany.de');
+    expect(users.rows.some((u) => u.id === BOB)).toBe(false);
+    expect(creds.rows.some((c) => c.userId === BOB)).toBe(false);
+  });
+
+  it('blocks deleting your own account', async () => {
+    const { service } = seed();
+    await expect(service.deleteUser(ORG_A, BOB, BOB)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('blocks deleting a Super Admin', async () => {
+    const { service } = seed();
+    await expect(service.deleteUser(ORG_A, BOB, ALICE)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('404s deleting a user in another org (tenant-scoped)', async () => {
+    const { service } = seed();
+    await expect(
+      service.deleteUser(ORG_A, ALICE, MALLORY),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

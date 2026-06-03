@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ExternalLink } from 'lucide-react';
+import { ChevronRight, ExternalLink } from 'lucide-react';
 import {
   DEPARTMENT_LABELS,
   Department,
@@ -19,7 +19,7 @@ import {
   type UpdateUserDto,
 } from '@evertrust/shared';
 import { useMe } from '@/hooks/use-auth';
-import { useUpdateUser } from '@/hooks/use-admin-users';
+import { useDeleteUser, useUpdateUser } from '@/hooks/use-admin-users';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { ConfirmButton } from '@/components/common/confirm-button';
 import { cn } from '@/lib/utils';
 import { ROLE_STYLES } from './role-styles';
 
@@ -74,6 +75,8 @@ function initials(name: string): string {
 export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   const { data: me } = useMe();
   const update = useUpdateUser();
+  const del = useDeleteUser();
+  const permRef = useRef<HTMLDivElement>(null);
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [phone, setPhone] = useState(user.phone ?? '');
@@ -130,6 +133,13 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
     setPermEdit({ kind: 'reset' });
   }
 
+  // Expand/collapse every resource group in the permission accordion.
+  function setAllPerms(open: boolean) {
+    permRef.current?.querySelectorAll('details').forEach((d) => {
+      d.open = open;
+    });
+  }
+
   function save() {
     const patch: UpdateUserDto = { name, position, department };
     patch.phone = phone.trim() ? phone.trim() : null;
@@ -153,6 +163,12 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   const isSelf = me?.id === user.id;
   const isSuperAdmin = user.role === 'SUPER_ADMIN';
   const blockDeactivate = isSelf || isSuperAdmin;
+  const blockDelete = isSelf || isSuperAdmin;
+  const deleteReason = isSelf
+    ? 'You cannot delete your own account'
+    : isSuperAdmin
+      ? 'A Super Admin cannot be deleted'
+      : undefined;
   const blockReason = isSelf
     ? 'You cannot deactivate your own account'
     : isSuperAdmin
@@ -200,12 +216,14 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
           </div>
           <p className="truncate text-sm text-muted-foreground">{user.email}</p>
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/users/${user.id}`}>
-            View profile
-            <ExternalLink className="ml-1 size-3.5" />
-          </Link>
-        </Button>
+        {me?.id === user.id ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/users/${user.id}`}>
+              View profile
+              <ExternalLink className="ml-1 size-3.5" />
+            </Link>
+          </Button>
+        ) : null}
       </div>
 
       {/* details: name (any users:manage) + email (Super Admin only) */}
@@ -334,58 +352,91 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
 
       {/* permissions */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Label className="text-xs uppercase tracking-wider text-muted-foreground">
             Permissions
           </Label>
-          {!formIsSuperAdmin ? (
+          <div className="flex items-center gap-1">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-7 text-xs"
-              onClick={() => setPermEdit({ kind: 'reset' })}
+              onClick={() => setAllPerms(true)}
             >
-              Reset to role defaults
+              Expand all
             </Button>
-          ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setAllPerms(false)}
+            >
+              Collapse all
+            </Button>
+            {!formIsSuperAdmin ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setPermEdit({ kind: 'reset' })}
+              >
+                Reset to role defaults
+              </Button>
+            ) : null}
+          </div>
         </div>
         {formIsSuperAdmin ? (
           <p className="text-xs text-muted-foreground">
             Super Admin always has full access — permissions aren&apos;t editable.
           </p>
         ) : null}
-        <div className="flex max-h-72 flex-col gap-3 overflow-y-auto rounded-lg border p-3">
-          {PERMISSION_GROUPS.map(({ resource, perms }) => (
-            <div key={resource} className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                {resource}
-              </span>
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                {perms.map((p) => {
-                  const action = p.split(':')[1] ?? p;
-                  return (
-                    <label
-                      key={p}
-                      className={cn(
-                        'flex cursor-pointer items-center gap-1.5 text-sm',
-                        formIsSuperAdmin && 'cursor-default opacity-70',
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-primary"
-                        checked={shown.has(p)}
-                        disabled={formIsSuperAdmin}
-                        onChange={() => toggle(p)}
-                      />
-                      {action}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div
+          ref={permRef}
+          className="flex max-h-80 flex-col gap-2 overflow-y-auto rounded-lg border p-2"
+        >
+          {PERMISSION_GROUPS.map(({ resource, perms }) => {
+            const granted = perms.filter((p) => shown.has(p)).length;
+            return (
+              <details
+                key={resource}
+                className="group rounded-md border bg-muted/20 [&_summary::-webkit-details-marker]:hidden"
+              >
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm">
+                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                  <span className="font-medium capitalize">{resource}</span>
+                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                    {granted}/{perms.length}
+                  </span>
+                </summary>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 pb-3 pl-9">
+                  {perms.map((p) => {
+                    const action = p.split(':')[1] ?? p;
+                    return (
+                      <label
+                        key={p}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-1.5 text-sm',
+                          formIsSuperAdmin && 'cursor-default opacity-70',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-primary"
+                          checked={shown.has(p)}
+                          disabled={formIsSuperAdmin}
+                          onChange={() => toggle(p)}
+                        />
+                        {action}
+                      </label>
+                    );
+                  })}
+                </div>
+              </details>
+            );
+          })}
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -430,9 +481,35 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
               Reactivate user
             </Button>
           )}
+
+          <ConfirmButton
+            trigger={
+              <Button
+                type="button"
+                variant="outline"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={blockDelete || del.isPending}
+                title={deleteReason}
+              >
+                Delete user
+              </Button>
+            }
+            title={`Delete ${user.name}?`}
+            description="This permanently removes the user and their login. If the user has linked activity (audit trail, leads, pricing…), deletion is blocked — deactivate them instead."
+            confirmLabel="Delete user"
+            pending={del.isPending}
+            onConfirm={() =>
+              del.mutate(user.id, {
+                onSuccess: () => toast.success(`Deleted ${user.name}.`),
+                onError: (e) =>
+                  toast.error(e.message ?? 'Could not delete the user.'),
+              })
+            }
+          />
+
           <span className="text-xs text-muted-foreground">
             {blockReason ??
-              'Deactivated accounts can’t log in. History is kept — accounts are never hard-deleted.'}
+              'Deactivate keeps history; delete removes the account entirely.'}
           </span>
         </div>
       </div>

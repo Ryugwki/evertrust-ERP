@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
   Patch,
+  Post,
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -15,7 +17,7 @@ import type { AuthUser } from '../auth/auth.types';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
 import { UsersService } from './users.service';
-import { UpdateUserBodyDto } from './users.dto';
+import { CreateUserBodyDto, UpdateUserBodyDto } from './users.dto';
 
 // Admin surface. RBAC is permission-based: the global PermissionsGuard 403s any
 // principal whose role lacks the required permission. `admin:config` is held by
@@ -83,5 +85,62 @@ export class AdminController {
     });
 
     return after;
+  }
+
+  // Create a new user (no public register flow). Any users:manage holder can add
+  // a teammate; only a Super Admin may grant the SUPER_ADMIN role. AUDITED.
+  @RequirePermissions('users:manage')
+  @Post('users')
+  async createUser(
+    @OrgId() orgId: string,
+    @CurrentUser() actingUser: AuthUser,
+    @Body() body: CreateUserBodyDto,
+    @Req() req: Request,
+  ): Promise<AdminUserDto> {
+    if (body.role === 'SUPER_ADMIN' && actingUser.role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException(
+        'Only a Super Admin can create a Super Admin',
+      );
+    }
+
+    const created = await this.users.createUser(orgId, body);
+
+    setAuditContext(req, {
+      entity: 'users',
+      entityId: created.id,
+      action: 'CREATE',
+      after: {
+        name: created.name,
+        email: created.email,
+        phone: created.phone,
+        role: created.role,
+        position: created.position,
+        department: created.department,
+      },
+    });
+
+    return created;
+  }
+
+  // Hard-delete a user. Guarded in the service (never yourself / a Super Admin;
+  // 409 if the user has linked records). AUDITED with the deleted identity.
+  @RequirePermissions('users:manage')
+  @Delete('users/:id')
+  async deleteUser(
+    @OrgId() orgId: string,
+    @CurrentUser() actingUser: AuthUser,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<{ id: string }> {
+    const before = await this.users.deleteUser(orgId, actingUser.id, id);
+
+    setAuditContext(req, {
+      entity: 'users',
+      entityId: id,
+      action: 'DELETE',
+      before,
+    });
+
+    return { id };
   }
 }

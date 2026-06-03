@@ -52,6 +52,7 @@ function parseCondition(sql: unknown): ParsedCondition {
 // snake_case column name -> the camelCase row key our schema rows use.
 const COLUMN_TO_KEY: Record<string, string> = {
   organization_id: 'organizationId',
+  user_id: 'userId',
   id: 'id',
   status: 'status',
   vergabe_id: 'vergabeId',
@@ -208,6 +209,12 @@ export function makeFakeDb(
           return Promise.resolve(undefined);
         },
       };
+    },
+
+    // Minimal transaction shim: run the callback with the same fake db. No real
+    // isolation/rollback — enough for services that wrap multi-step writes.
+    transaction<T>(cb: (tx: DbClient) => Promise<T>): Promise<T> {
+      return Promise.resolve(cb(db));
     },
   } as unknown as DbClient;
 
