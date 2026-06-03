@@ -31,9 +31,10 @@ services:
     plan: free               # FREE: sleeps after ~15 min idle (cold starts). Upgrade -> starter for always-on.
     dockerfilePath: ./infra/Dockerfile.node
     dockerContext: .
-    # Free tier has no pre-deploy hook / Shell, so run migrate + seed (both
-    # idempotent) at startup, then launch the API. Safe to re-run every cold start.
-    dockerCommand: corepack pnpm --filter @evertrust/db db:migrate && corepack pnpm --filter @evertrust/db db:seed && corepack pnpm --filter @evertrust/db exec node --import tsx /app/apps/api/dist/main.js
+    # Render runs the Docker Command WITHOUT a shell (splits on spaces), so `&&`
+    # can't chain here. The startup script does migrate + seed (idempotent) then
+    # launches the API; this command is just two tokens, no shell operators.
+    dockerCommand: sh /app/infra/api-start.sh
     healthCheckPath: /health
     autoDeploy: true
     # (no persistent disk — free instances can't attach one; uploads use ephemeral
