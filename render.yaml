@@ -1,0 +1,91 @@
+# Render Blueprint — Evertrust ERP API + Postgres (the half Vercel can't host).
+# The web (apps/web) deploys separately on Vercel, pointed at this API's URL.
+#
+# One-time: Render Dashboard → New → Blueprint → connect this repo. Render reads
+# this file and provisions the Postgres DB, the API service, and its upload disk.
+# Then fill the `sync: false` secrets in the dashboard and trigger a deploy.
+#
+# Notes baked in from the repo:
+#  - dockerfilePath/dockerContext mirror infra/docker-compose.yml (context = repo root).
+#  - dockerCommand = the api start command from compose (the Dockerfile CMD is a
+#    placeholder `node --version`, so it MUST be set here).
+#  - preDeployCommand runs Drizzle migrations before each deploy (the `migrate`
+#    one-shot in compose). It also enables pgvector via migration 0000.
+#  - Seeding the first admin user is a ONE-TIME manual step (see README below),
+#    not in preDeploy, so it never re-runs.
+#  - The app listens on Render's injected $PORT automatically (config reads PORT).
+
+databases:
+  - name: evertrust-db
+    plan: basic-256mb        # free expires after ~30 days; basic-256mb is persistent. Adjust as needed.
+    postgresMajorVersion: "16"
+    region: frankfurt        # EU data residency (Evertrust GmbH). Keep API in the same region.
+
+services:
+  - type: web
+    name: evertrust-api
+    runtime: docker
+    region: frankfurt
+    plan: starter            # always-on (free web services sleep on idle → API + n8n poller would stop).
+    dockerfilePath: ./infra/Dockerfile.node
+    dockerContext: .
+    dockerCommand: corepack pnpm --filter @evertrust/db exec node --import tsx /app/apps/api/dist/main.js
+    preDeployCommand: corepack pnpm --filter @evertrust/db db:migrate
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: uploads
+      mountPath: /var/data/uploads   # tender document storage (multer diskStorage)
+      sizeGB: 1
+    envVars:
+      # --- core ---------------------------------------------------------------
+      - key: DATABASE_URL
+        fromDatabase:
+          name: evertrust-db
+          property: connectionString
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: JWT_SECRET
+        generateValue: true            # Render generates a strong secret
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: LOG_LEVEL
+        value: info
+      # Set to your Vercel URL(s), comma-separated, AFTER the web is deployed:
+      #   https://evertrust-erp.vercel.app,https://app.yourdomain.com
+      - key: CORS_ORIGINS
+        sync: false
+      # --- n8n observability poller / backfill (Marketing sync needs these) ---
+      - key: N8N_API_URL
+        sync: false
+      - key: N8N_API_KEY
+        sync: false
+      # Must MATCH the x-arsenal-token your n8n callback nodes send:
+      - key: ARSENAL_INGEST_TOKEN
+        sync: false
+      # --- n8n arsenal trigger webhooks (blank = that trigger disabled) -------
+      - key: N8N_AIM_WEBHOOK_URL
+        sync: false
+      - key: N8N_LEAD_SATELLITE_WEBHOOK_URL
+        sync: false
+      - key: N8N_AMMO_FORGE_WEBHOOK_URL
+        sync: false
+      - key: N8N_REACH_BAZOOKA_WEBHOOK_URL
+        sync: false
+      - key: N8N_REPLY_GLOCK_WEBHOOK_URL
+        sync: false
+      - key: N8N_SLEEPER_GRENADE_WEBHOOK_URL
+        sync: false
+      # --- Key Account hot-leads webhooks ------------------------------------
+      - key: N8N_PROVISION_HOT_LEADS_WEBHOOK_URL
+        sync: false
+      - key: N8N_HOT_LEADS_PIPELINE_WEBHOOK_URL
+        sync: false
+      # --- supplier RFQ (Hermes) ---------------------------------------------
+      - key: N8N_HERMES_RFQ_WEBHOOK_URL
+        sync: false
+      # --- Claude price-assist (blank = feature off) -------------------------
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-3-5-sonnet-latest

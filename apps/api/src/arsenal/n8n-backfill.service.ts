@@ -115,10 +115,50 @@ export function extractMetrics(
   }
 }
 
+// Distinct campaign Drive-folder ids that actually appear on PROCESSED items in
+// this execution — i.e. the campaigns a global-stage run touched. The folder id
+// is only ever written to a `campaignFolderId` field by the workflow's own Code
+// nodes (Explode Campaigns, Check Required Files, …), so raw Drive folder listings
+// (which use `id`/`name`) never leak in. Used to attribute a global run to a
+// campaign when it provably touched exactly one.
+export function touchedFolderIds(rd: RunData): string[] {
+  const set = new Set<string>();
+  for (const nodeRunsList of Object.values(rd)) {
+    for (const r of nodeRunsList ?? []) {
+      for (const arr of r?.data?.main ?? []) {
+        for (const it of arr ?? []) {
+          const f = it?.json?.['campaignFolderId'];
+          if (typeof f === 'string' && f.length > 0) set.add(f);
+        }
+      }
+    }
+  }
+  return [...set];
+}
+
+// Resolve the single ERP campaign a global run belongs to: map every touched
+// folder id to its ERP campaign and return it ONLY if exactly one distinct
+// campaign matched. Zero or many touched campaigns => null (kept org-wide, so we
+// never fabricate a per-campaign number the workflow aggregated globally).
+export function resolveTouchedCampaign<T extends { id: string }>(
+  folderIds: string[],
+  byFolder: Map<string, T>,
+): T | null {
+  const uniq = new Map<string, T>();
+  for (const f of folderIds) {
+    const c = byFolder.get(f);
+    if (c) uniq.set(c.id, c);
+  }
+  const arr = [...uniq.values()];
+  return arr.length === 1 ? (arr[0] as T) : null;
+}
+
 // Imports recent n8n executions as arsenal_runs rows with funnel metrics read from
 // each execution's data (READ-ONLY against n8n). Idempotent: dedup by the n8n
-// execution id (unique). Per-campaign stages (Lead Satellite, Ammo Forge) attach
-// to a campaign by Drive folder id; the global stages record org-wide totals.
+// execution id (one row per execution). Per-campaign stages (Lead Satellite, Ammo
+// Forge) attach to a campaign by their own Drive folder id; the global stages
+// (Bazooka/Glock/Sleeper, which aggregate metrics across a single looped run) are
+// attributed to a campaign when that run touched exactly one, else stay org-wide.
 @Injectable()
 export class N8nBackfillService {
   private readonly logger = new Logger(N8nBackfillService.name);
@@ -177,7 +217,16 @@ export class N8nBackfillService {
         const rd = await this.fetchRunData(base, key, exec.id);
         if (!rd) continue;
         const { metrics, campaignFolderId } = extractMetrics(stage, rd);
-        const campaign = campaignFolderId ? byFolder.get(campaignFolderId) : undefined;
+        // Per-campaign stages carry their own folder id. Global stages (folder id
+        // null) get attributed to a campaign only if the run provably touched
+        // exactly one ERP campaign — so a single-campaign org's funnel lights up
+        // per campaign, while genuinely multi-campaign runs stay org-wide.
+        const campaign =
+          (campaignFolderId ? byFolder.get(campaignFolderId) : undefined) ??
+          (campaignFolderId
+            ? undefined
+            : (resolveTouchedCampaign(touchedFolderIds(rd), byFolder) ??
+              undefined));
         await this.db.insert(schema.arsenalRuns).values({
           organizationId: campaign?.organizationId ?? orgId,
           stage,

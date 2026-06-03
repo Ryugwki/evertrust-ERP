@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Crosshair } from 'lucide-react';
 import {
@@ -54,17 +54,50 @@ const FIELDS: readonly Field[] = [
   { key: 'whatsappNumber', label: 'WhatsApp number', placeholder: '+49…', required: true },
 ];
 
+// Keep only letters/digits in a label token (drops spaces + punctuation), so
+// "Near Border" -> "NearBorder", "LED Retrofit" -> "LEDRetrofit".
+function slugToken(s: string): string {
+  return (s ?? '').trim().replace(/[^a-zA-Z0-9]+/g, '');
+}
+
+// Auto-build the Gmail label from the AIM inputs: niche · country · zone · year
+// (e.g. "LED-Germany-North-2026"). Empty until a niche is entered; the generic
+// "Anywhere" zone is omitted.
+function deriveGmailLabel(
+  form: Partial<Record<keyof CreateCampaignDto, string>>,
+): string {
+  const niche = slugToken(form.niche ?? '');
+  if (!niche) return '';
+  const country = slugToken(form.country ?? '');
+  const zone =
+    form.state && form.state !== 'Anywhere' ? slugToken(form.state) : '';
+  const year = String(new Date().getFullYear());
+  return [niche, country, zone, year].filter(Boolean).join('-');
+}
+
 // AIM "Lock & Load": the top-right launch control. Opens the target form; on submit
 // the create hook persists the campaign AND fires the AIM webhook server-side, so
 // the success toast reflects the actual deploy outcome (DEPLOYED / DRAFT / FAILED).
 export function AimLaunchDialog() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<Record<keyof CreateCampaignDto, string>>>({});
+  // The Gmail label auto-fills from the other inputs until the user edits it.
+  const [labelEdited, setLabelEdited] = useState(false);
   const create = useCreateCampaign();
 
   const set = (key: keyof CreateCampaignDto, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
   const val = (key: keyof CreateCampaignDto) => (form[key] ?? '').trim();
+
+  // Keep the Gmail label in sync with niche/country/zone (+ year) until the user
+  // types their own. Stored on the form so submit + the required check just work.
+  useEffect(() => {
+    if (labelEdited) return;
+    setForm((f) => {
+      const next = deriveGmailLabel(f);
+      return f.gmailLabel === next ? f : { ...f, gmailLabel: next };
+    });
+  }, [form.niche, form.country, form.state, labelEdited]);
 
   function submit() {
     const missing = FIELDS.filter((f) => f.required && !val(f.key));
@@ -96,6 +129,7 @@ export function AimLaunchDialog() {
         );
         setOpen(false);
         setForm({});
+        setLabelEdited(false);
       },
       onError: (error) => toast.error(error.message ?? 'Launch failed.'),
     });
@@ -148,9 +182,18 @@ export function AimLaunchDialog() {
                   value={form[f.key] ?? ''}
                   placeholder={f.placeholder}
                   maxLength={f.key === 'name' ? 60 : 200}
-                  onChange={(e) => set(f.key, e.target.value)}
+                  onChange={(e) => {
+                    if (f.key === 'gmailLabel') setLabelEdited(true);
+                    set(f.key, e.target.value);
+                  }}
                 />
               )}
+              {f.key === 'gmailLabel' && !labelEdited ? (
+                <p className="text-xs text-muted-foreground">
+                  Auto-generated from niche · country · zone · year — edit to
+                  override.
+                </p>
+              ) : null}
             </div>
           ))}
         </div>

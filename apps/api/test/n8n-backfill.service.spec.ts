@@ -1,4 +1,8 @@
-import { extractMetrics } from '../src/arsenal/n8n-backfill.service';
+import {
+  extractMetrics,
+  touchedFolderIds,
+  resolveTouchedCampaign,
+} from '../src/arsenal/n8n-backfill.service';
 
 // These pin the per-stage metric extraction against the runData shapes verified
 // from live n8n executions. The node names + paths here mirror reality, so a
@@ -89,5 +93,55 @@ describe('extractMetrics — per-stage funnel counts', () => {
       metrics: { repliesHandled: 0, meetingsBooked: 0 },
       campaignFolderId: null,
     });
+  });
+});
+
+describe('touchedFolderIds — campaigns a (global) run touched', () => {
+  it('collects distinct campaignFolderId across nodes; ignores items without it', () => {
+    const rd = {
+      'Code — Explode Campaigns': [run([{ campaignFolderId: 'F1' }])],
+      'Code — Compute Action': [
+        run([{ campaignFolderId: 'F1' }, { campaignFolderId: 'F1' }]),
+      ],
+      // raw Drive listing shape (id/name) must NOT leak in
+      'Drive — List Campaign Folders': [run([{ id: 'XYZ', name: 'whatever' }])],
+    };
+    expect(touchedFolderIds(rd).sort()).toEqual(['F1']);
+  });
+
+  it('returns every distinct folder when a run spans several campaigns', () => {
+    const rd = {
+      'Code — Explode Campaigns': [
+        run([{ campaignFolderId: 'F1' }, { campaignFolderId: 'F2' }]),
+      ],
+    };
+    expect(touchedFolderIds(rd).sort()).toEqual(['F1', 'F2']);
+  });
+
+  it('empty runData → []', () => {
+    expect(touchedFolderIds({})).toEqual([]);
+  });
+});
+
+describe('resolveTouchedCampaign — attribute only when exactly one ERP campaign', () => {
+  const byFolder = new Map([
+    ['F1', { id: 'c1' }],
+    ['F2', { id: 'c2' }],
+  ]);
+
+  it('one matched campaign → that campaign', () => {
+    expect(resolveTouchedCampaign(['F1', 'F1'], byFolder)).toEqual({ id: 'c1' });
+  });
+
+  it('two distinct matched campaigns → null (stays org-wide)', () => {
+    expect(resolveTouchedCampaign(['F1', 'F2'], byFolder)).toBeNull();
+  });
+
+  it('folders matching no ERP campaign → null', () => {
+    expect(resolveTouchedCampaign(['ZZZ'], byFolder)).toBeNull();
+  });
+
+  it('extra unknown folders ignored when one campaign matches', () => {
+    expect(resolveTouchedCampaign(['F1', 'ZZZ'], byFolder)).toEqual({ id: 'c1' });
   });
 });
