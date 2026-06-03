@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { schema } from '@evertrust/db';
 import { UsersService } from '../src/users/users.service';
 import { FakeTable, makeFakeDb } from './fake-db';
@@ -178,6 +182,41 @@ describe('UsersService — updateUser guards (Super Admin + deactivation)', () =
       active: true,
     });
     expect(after.active).toBe(true);
+  });
+});
+
+describe('UsersService — updateUser (name / email)', () => {
+  it('updates the display name', async () => {
+    const { service } = seed();
+    const { after } = await service.updateUser(ORG_A, ALICE, BOB, {
+      name: 'Bobby',
+    });
+    expect(after.name).toBe('Bobby');
+  });
+
+  it('updates the email to a new, unique address', async () => {
+    const { service } = seed();
+    const { after } = await service.updateUser(ORG_A, ALICE, BOB, {
+      email: 'bob.new@evertrust-germany.de',
+    });
+    expect(after.email).toBe('bob.new@evertrust-germany.de');
+  });
+
+  it('rejects an email already used by another user', async () => {
+    const { service } = seed();
+    await expect(
+      service.updateUser(ORG_A, ALICE, BOB, {
+        email: 'alice@evertrust-germany.de',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('allows re-saving a user with their own unchanged email', async () => {
+    const { service } = seed();
+    const { after } = await service.updateUser(ORG_A, ALICE, BOB, {
+      email: 'bob@evertrust-germany.de',
+    });
+    expect(after.email).toBe('bob@evertrust-germany.de');
   });
 });
 

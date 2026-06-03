@@ -23,6 +23,7 @@ import { useUpdateUser } from '@/hooks/use-admin-users';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -73,6 +74,8 @@ function initials(name: string): string {
 export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   const { data: me } = useMe();
   const update = useUpdateUser();
+  const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState<UserRole>(user.role);
   const [position, setPosition] = useState<Position | null>(user.position);
   const [department, setDepartment] = useState<Department | null>(
@@ -82,6 +85,8 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
 
   // Reset the form whenever the selected user (or its saved values) changes.
   useEffect(() => {
+    setName(user.name);
+    setEmail(user.email);
     setRole(user.role);
     setPosition(user.position);
     setDepartment(user.department);
@@ -91,6 +96,8 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   const roleLocked = user.role === 'SUPER_ADMIN';
   const formIsSuperAdmin = role === 'SUPER_ADMIN';
   const styles = ROLE_STYLES[user.role];
+  // Email is the login identity — only a Super Admin may change it.
+  const canEditEmail = me?.role === 'SUPER_ADMIN';
 
   const shown = useMemo<Set<Permission>>(() => {
     if (formIsSuperAdmin) return new Set(PERMISSIONS);
@@ -100,6 +107,8 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   }, [formIsSuperAdmin, permEdit, role, user]);
 
   const dirty =
+    name !== user.name ||
+    (canEditEmail && email !== user.email) ||
     role !== user.role ||
     position !== user.position ||
     department !== user.department ||
@@ -119,7 +128,8 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   }
 
   function save() {
-    const patch: UpdateUserDto = { position, department };
+    const patch: UpdateUserDto = { name, position, department };
+    if (canEditEmail && email !== user.email) patch.email = email;
     if (!roleLocked) patch.role = role;
     if (!formIsSuperAdmin) {
       if (permEdit.kind === 'custom') patch.permissions = permEdit.set;
@@ -192,6 +202,45 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
             <ExternalLink className="ml-1 size-3.5" />
           </Link>
         </Button>
+      </div>
+
+      {/* details: name (any users:manage) + email (Super Admin only) */}
+      <div className="flex flex-col gap-3">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Details
+        </Label>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="detail-name" className="text-xs text-muted-foreground">
+              Name
+            </Label>
+            <Input
+              id="detail-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="detail-email"
+              className="text-xs text-muted-foreground"
+            >
+              Email
+            </Label>
+            <Input
+              id="detail-email"
+              type="email"
+              value={canEditEmail ? email : user.email}
+              disabled={!canEditEmail}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            {!canEditEmail ? (
+              <p className="text-xs text-muted-foreground">
+                Only a Super Admin can change email.
+              </p>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {/* access */}

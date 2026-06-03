@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -47,6 +48,7 @@ export function UserEditDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const update = useUpdateUser();
+  const [name, setName] = useState(user.name);
   const [role, setRole] = useState<UserRole>(user.role);
   const [position, setPosition] = useState<Position | null>(user.position);
   const [department, setDepartment] = useState<Department | null>(
@@ -55,6 +57,7 @@ export function UserEditDialog({
 
   useEffect(() => {
     if (open) {
+      setName(user.name);
       setRole(user.role);
       setPosition(user.position);
       setDepartment(user.department);
@@ -64,7 +67,7 @@ export function UserEditDialog({
   const roleLocked = user.role === 'SUPER_ADMIN';
 
   function save() {
-    const patch: UpdateUserDto = { position, department };
+    const patch: UpdateUserDto = { name, position, department };
     if (!roleLocked) patch.role = role;
     update.mutate(
       { id: user.id, patch },
@@ -87,6 +90,15 @@ export function UserEditDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-name">Name</Label>
+            <Input
+              id="edit-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <Label>Role</Label>
             <Select
@@ -157,8 +169,8 @@ export function UserEditDialog({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Permissions are edited on the Users page. Name and email aren&apos;t
-            editable through this admin view.
+            Email is changed by a Super Admin on the Users page; permissions are
+            edited there too.
           </p>
         </div>
 

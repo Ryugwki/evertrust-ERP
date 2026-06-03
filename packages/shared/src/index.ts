@@ -554,6 +554,11 @@ export const UpdateUserDto = z.object({
   position: Position.nullable().optional(),
   department: Department.nullable().optional(),
   active: z.boolean().optional(),
+  // Display name — editable by any users:manage holder.
+  name: z.string().trim().min(1).max(200).optional(),
+  // Login email — change is RESTRICTED to a Super Admin (enforced in the API)
+  // and must stay globally unique.
+  email: z.string().trim().email().optional(),
   // Per-user permission override: an explicit set, or null to follow role
   // defaults. Omit to leave unchanged. Ignored for SUPER_ADMIN (always full).
   permissions: z.array(PermissionEnum).nullable().optional(),

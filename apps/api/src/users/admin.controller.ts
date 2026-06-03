@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import type { AdminUserDto } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
@@ -43,6 +51,14 @@ export class AdminController {
     @Body() body: UpdateUserBodyDto,
     @Req() req: Request,
   ): Promise<AdminUserDto> {
+    // Email is the login identity — only a Super Admin may change it. Name and
+    // the placement fields stay open to any users:manage holder.
+    if (body.email !== undefined && actingUser.role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException(
+        'Only a Super Admin can change a user’s email',
+      );
+    }
+
     const { before, after } = await this.users.updateUser(
       orgId,
       actingUser.id,
@@ -56,6 +72,8 @@ export class AdminController {
       action: 'UPDATE',
       before,
       after: {
+        name: after.name,
+        email: after.email,
         role: after.role,
         position: after.position,
         department: after.department,

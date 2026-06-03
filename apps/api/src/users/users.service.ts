@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -27,6 +28,8 @@ export interface UpdateNameResult {
 
 export interface UpdateUserResult {
   before: {
+    name: string;
+    email: string;
     role: UserRole;
     position: Position | null;
     department: Department | null;
@@ -131,6 +134,8 @@ export class UsersService {
 
     const existing = await this.db
       .select({
+        name: schema.users.name,
+        email: schema.users.email,
         role: schema.users.role,
         position: schema.users.position,
         department: schema.users.department,
@@ -178,13 +183,30 @@ export class UsersService {
       );
     }
 
+    // Email change must stay globally unique (it's the login identity). The
+    // Super-Admin-only restriction on email is enforced at the controller.
+    if (dto.email !== undefined && dto.email !== prev.email) {
+      const clash = await this.db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.email, dto.email))
+        .limit(1);
+      if (clash[0] && clash[0].id !== userId) {
+        throw new ConflictException('That email is already in use');
+      }
+    }
+
     const patch: Partial<{
+      name: string;
+      email: string;
       role: UserRole;
       position: Position | null;
       department: Department | null;
       active: boolean;
       permissions: Permission[] | null;
     }> = {};
+    if (dto.name !== undefined) patch.name = dto.name;
+    if (dto.email !== undefined) patch.email = dto.email;
     if (dto.role !== undefined) patch.role = dto.role;
     if (dto.position !== undefined) patch.position = dto.position;
     if (dto.department !== undefined) patch.department = dto.department;
