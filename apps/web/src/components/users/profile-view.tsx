@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import {
@@ -25,6 +26,7 @@ import { StatTile } from '@/components/common/stat-tile';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/tender-format';
 import { ROLE_STYLES } from './role-styles';
+import { UserEditDialog } from './user-edit-dialog';
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -52,6 +54,7 @@ function groupPermissions(perms: readonly string[]): [string, string[]][] {
 // activity history aren't tracked per-user yet — we say so rather than invent.
 export function ProfileView({ userId }: { userId: string }) {
   const users = useAdminUsers();
+  const [editOpen, setEditOpen] = useState(false);
 
   if (users.isLoading) {
     return <Skeleton className="h-96 w-full rounded-lg" />;
@@ -146,8 +149,14 @@ export function ProfileView({ userId }: { userId: string }) {
                 <span>Member since {formatDateTime(user.createdAt)}</span>
               </div>
             </div>
-            <Button asChild variant="outline" size="sm" className="mb-1">
-              <Link href="/users">Edit access</Link>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mb-1"
+              onClick={() => setEditOpen(true)}
+            >
+              Edit profile
             </Button>
           </div>
         </CardContent>
@@ -299,6 +308,8 @@ export function ProfileView({ userId }: { userId: string }) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <UserEditDialog user={user} open={editOpen} onOpenChange={setEditOpen} />
     </div>
   );
 }

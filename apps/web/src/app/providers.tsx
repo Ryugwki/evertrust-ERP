@@ -23,7 +23,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      {/* The ERP UI is designed dark (matches the redesign mockups). Force dark
+          app-wide rather than following the OS theme. */}
+      <ThemeProvider attribute="class" forcedTheme="dark" disableTransitionOnChange>
         {children}
         <Toaster richColors position="top-right" />
       </ThemeProvider>
