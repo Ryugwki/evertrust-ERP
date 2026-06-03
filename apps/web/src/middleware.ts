@@ -14,6 +14,7 @@ const PROTECTED_PREFIXES = [
   '/marketing',
   '/key-account',
   '/sales',
+  '/users',
 ];
 
 export function middleware(request: NextRequest): NextResponse {
