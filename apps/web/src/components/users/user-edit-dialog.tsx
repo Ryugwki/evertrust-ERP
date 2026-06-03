@@ -49,6 +49,7 @@ export function UserEditDialog({
 }) {
   const update = useUpdateUser();
   const [name, setName] = useState(user.name);
+  const [phone, setPhone] = useState(user.phone ?? '');
   const [role, setRole] = useState<UserRole>(user.role);
   const [position, setPosition] = useState<Position | null>(user.position);
   const [department, setDepartment] = useState<Department | null>(
@@ -58,6 +59,7 @@ export function UserEditDialog({
   useEffect(() => {
     if (open) {
       setName(user.name);
+      setPhone(user.phone ?? '');
       setRole(user.role);
       setPosition(user.position);
       setDepartment(user.department);
@@ -68,6 +70,7 @@ export function UserEditDialog({
 
   function save() {
     const patch: UpdateUserDto = { name, position, department };
+    patch.phone = phone.trim() ? phone.trim() : null;
     if (!roleLocked) patch.role = role;
     update.mutate(
       { id: user.id, patch },
@@ -166,6 +169,17 @@ export function UserEditDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-phone">Phone</Label>
+            <Input
+              id="edit-phone"
+              type="tel"
+              value={phone}
+              placeholder="—"
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
 
           <p className="text-xs text-muted-foreground">

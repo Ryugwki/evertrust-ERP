@@ -99,6 +99,7 @@ export class UsersService {
         id: schema.users.id,
         name: schema.users.name,
         email: schema.users.email,
+        phone: schema.users.phone,
         role: schema.users.role,
         position: schema.users.position,
         department: schema.users.department,
@@ -136,6 +137,7 @@ export class UsersService {
       .select({
         name: schema.users.name,
         email: schema.users.email,
+        phone: schema.users.phone,
         role: schema.users.role,
         position: schema.users.position,
         department: schema.users.department,
@@ -199,6 +201,7 @@ export class UsersService {
     const patch: Partial<{
       name: string;
       email: string;
+      phone: string | null;
       role: UserRole;
       position: Position | null;
       department: Department | null;
@@ -207,6 +210,7 @@ export class UsersService {
     }> = {};
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.email !== undefined) patch.email = dto.email;
+    if (dto.phone !== undefined) patch.phone = dto.phone;
     if (dto.role !== undefined) patch.role = dto.role;
     if (dto.position !== undefined) patch.position = dto.position;
     if (dto.department !== undefined) patch.department = dto.department;
@@ -221,6 +225,7 @@ export class UsersService {
       id: schema.users.id,
       name: schema.users.name,
       email: schema.users.email,
+      phone: schema.users.phone,
       role: schema.users.role,
       position: schema.users.position,
       department: schema.users.department,

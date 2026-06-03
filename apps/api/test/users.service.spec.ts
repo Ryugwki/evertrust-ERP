@@ -211,6 +211,18 @@ describe('UsersService — updateUser (name / email)', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('sets and clears the phone number', async () => {
+    const { service } = seed();
+    const set = await service.updateUser(ORG_A, ALICE, BOB, {
+      phone: '+49 30 1234 567',
+    });
+    expect(set.after.phone).toBe('+49 30 1234 567');
+    const cleared = await service.updateUser(ORG_A, ALICE, BOB, {
+      phone: null,
+    });
+    expect(cleared.after.phone).toBeNull();
+  });
+
   it('allows re-saving a user with their own unchanged email', async () => {
     const { service } = seed();
     const { after } = await service.updateUser(ORG_A, ALICE, BOB, {

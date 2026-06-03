@@ -41,6 +41,8 @@ export const users = pgTable(
     permissions: text('permissions').array(),
     name: text('name').notNull(),
     email: text('email').notNull(),
+    // Contact phone — NULLABLE, descriptive only.
+    phone: text('phone'),
     active: boolean('active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

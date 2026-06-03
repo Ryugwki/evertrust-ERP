@@ -534,6 +534,9 @@ export const AdminUserDto = z.object({
   id: z.string().uuid(),
   name: z.string(),
   email: z.string().email(),
+  // Contact phone. Optional for rolling-deploy safety (an older API may omit it);
+  // null = not set.
+  phone: z.string().nullable().optional(),
   role: UserRole,
   position: Position.nullable(),
   department: Department.nullable(),
@@ -559,6 +562,8 @@ export const UpdateUserDto = z.object({
   // Login email — change is RESTRICTED to a Super Admin (enforced in the API)
   // and must stay globally unique.
   email: z.string().trim().email().optional(),
+  // Contact phone — editable by any users:manage holder; null clears it.
+  phone: z.string().trim().max(40).nullable().optional(),
   // Per-user permission override: an explicit set, or null to follow role
   // defaults. Omit to leave unchanged. Ignored for SUPER_ADMIN (always full).
   permissions: z.array(PermissionEnum).nullable().optional(),

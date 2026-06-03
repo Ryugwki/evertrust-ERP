@@ -279,6 +279,7 @@ export function ProfileView({ userId }: { userId: string }) {
               </p>
               <div className="flex flex-col divide-y">
                 <AccountRow k="Email" v={user.email} />
+                <AccountRow k="Phone" v={user.phone ?? '—'} />
                 <AccountRow k="Status" v={user.active ? 'Active' : 'Inactive'} />
                 <AccountRow k="Role" v={ROLE_LABELS[user.role]} />
                 <AccountRow

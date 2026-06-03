@@ -76,6 +76,7 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   const update = useUpdateUser();
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
+  const [phone, setPhone] = useState(user.phone ?? '');
   const [role, setRole] = useState<UserRole>(user.role);
   const [position, setPosition] = useState<Position | null>(user.position);
   const [department, setDepartment] = useState<Department | null>(
@@ -87,6 +88,7 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   useEffect(() => {
     setName(user.name);
     setEmail(user.email);
+    setPhone(user.phone ?? '');
     setRole(user.role);
     setPosition(user.position);
     setDepartment(user.department);
@@ -109,6 +111,7 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
   const dirty =
     name !== user.name ||
     (canEditEmail && email !== user.email) ||
+    phone !== (user.phone ?? '') ||
     role !== user.role ||
     position !== user.position ||
     department !== user.department ||
@@ -129,6 +132,7 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
 
   function save() {
     const patch: UpdateUserDto = { name, position, department };
+    patch.phone = phone.trim() ? phone.trim() : null;
     if (canEditEmail && email !== user.email) patch.email = email;
     if (!roleLocked) patch.role = role;
     if (!formIsSuperAdmin) {
@@ -239,6 +243,18 @@ export function UserDetailPanel({ user }: { user: AdminUserDto }) {
                 Only a Super Admin can change email.
               </p>
             ) : null}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="detail-phone" className="text-xs text-muted-foreground">
+              Phone
+            </Label>
+            <Input
+              id="detail-phone"
+              type="tel"
+              value={phone}
+              placeholder="—"
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
         </div>
       </div>

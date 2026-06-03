@@ -74,6 +74,7 @@ export class AdminController {
       after: {
         name: after.name,
         email: after.email,
+        phone: after.phone,
         role: after.role,
         position: after.position,
         department: after.department,
