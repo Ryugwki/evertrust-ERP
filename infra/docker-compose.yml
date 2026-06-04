@@ -86,6 +86,8 @@ services:
       # Growth Engine: ERP → n8n arsenal webhooks (blank = that trigger disabled).
       # The daily Bazooka send TIME is an in-app setting (arsenal_settings), not env.
       N8N_AIM_WEBHOOK_URL: ${N8N_AIM_WEBHOOK_URL:-}
+      # Read-only Drive scan for the campaigns list (POST /campaigns/sync).
+      N8N_CAMPAIGNS_LIST_WEBHOOK_URL: ${N8N_CAMPAIGNS_LIST_WEBHOOK_URL:-}
       N8N_LEAD_SATELLITE_WEBHOOK_URL: ${N8N_LEAD_SATELLITE_WEBHOOK_URL:-}
       N8N_AMMO_FORGE_WEBHOOK_URL: ${N8N_AMMO_FORGE_WEBHOOK_URL:-}
       N8N_REACH_BAZOOKA_WEBHOOK_URL: ${N8N_REACH_BAZOOKA_WEBHOOK_URL:-}

@@ -10,6 +10,7 @@ import { StatTile } from '@/components/common/stat-tile';
 import { AimLaunchDialog } from './aim-launch-dialog';
 import { SequenceStrip } from './sequence-strip';
 import { CampaignBoard } from './campaign-board';
+import { SyncDriveButton } from './sync-drive-button';
 
 // Growth Engine home: the Arsenal as one systemized, synced sequence. AIM launch +
 // deploy KPIs → the sequence strip (global stages + schedule) → the campaign board
@@ -33,7 +34,10 @@ export function GrowthEngineView() {
         description="The outbound arsenal as one sequence — AIM launches it, the rest runs and stays in sync."
         actions={
           <Can permission="campaigns:write">
-            <AimLaunchDialog />
+            <div className="flex items-center gap-2">
+              <SyncDriveButton />
+              <AimLaunchDialog />
+            </div>
           </Can>
         }
       />

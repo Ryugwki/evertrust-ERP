@@ -255,7 +255,12 @@
       <div class="kpi"><div class="v">1</div><div class="k">Meetings</div></div>
     </div>
 
-    <p class="h">Deployed by Growth Engine — track &amp; drill in</p>
+    <div class="gbar" style="margin-bottom:12px;align-items:baseline">
+      <p class="h" style="margin:0">Deployed by Growth Engine — track &amp; drill in</p>
+      <span class="spacer" style="margin-left:auto"></span>
+      <button class="qa" onclick="syncDrive()">⟳ Sync with Drive</button>
+    </div>
+    <p style="color:var(--faint);font-size:11.5px;margin:-4px 0 14px">Drive folder = source of truth — a campaign whose folder you delete drops out here on sync (n8n run history can't be trusted to reflect deletions).</p>
 
     <details class="camp" open>
       <summary>
@@ -284,7 +289,7 @@
       </div>
     </details>
 
-    <details class="camp">
+    <details class="camp" id="cmp-muenchen">
       <summary>
         <span class="cn">Straßenbeleuchtung München 2026</span><span class="pill sch">SCHEDULED</span>
         <span class="miniF"><span>Leads <b>—</b></span><span>Emails <b>—</b></span><span>Replies <b>—</b></span><span>Mtg <b>—</b></span></span>
@@ -379,6 +384,15 @@ function aim(){
     '<div class="drow"><button class="act sky" onclick="deploy()">Deploy campaign</button><button class="act ghost" onclick="closeModal()">Cancel</button></div>');
 }
 function deploy(){var p=(document.getElementById('aim-proj').value)||'new campaign';closeModal();toast('🎯 Launched: '+p+' — arsenal running');}
+function syncDrive(){
+  toast('Scanning Drive "Evertrust Campaigns" folder…');
+  setTimeout(function(){
+    // mock: München's Drive folder was deleted → archive it out of the active list.
+    var gone=document.getElementById('cmp-muenchen');
+    if(gone&&gone.parentNode){gone.parentNode.removeChild(gone);toast('Synced with Drive ✓ · 2 in Drive · 1 archived (folder deleted)');}
+    else{toast('Synced with Drive ✓ · 2 in Drive · 0 changes');}
+  },900);
+}
 </script>
 </body>
 </html>
