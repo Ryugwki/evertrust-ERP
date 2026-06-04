@@ -104,8 +104,8 @@ export class MeetingsController {
     });
   }
 
-  // Pull recent Sales-Agent executions from n8n → upsert meetings, resolving each
-  // meeting's campaign by prospect email → lead. AUDITED.
+  // Sync from the Drive folder: mirror the analysis-report Docs (imported /
+  // updated / pruned) so the ERP matches what's actually in the folder. AUDITED.
   @RequirePermissions('campaigns:write')
   @Post('sync')
   async sync(

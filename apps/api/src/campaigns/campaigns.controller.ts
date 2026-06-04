@@ -9,7 +9,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import type { CampaignDto } from '@evertrust/shared';
+import type { CampaignDto, CampaignSyncResultDto } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/auth.types';
@@ -40,6 +40,25 @@ export class CampaignsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CampaignDto> {
     return this.campaigns.get(orgId, id) as unknown as Promise<CampaignDto>;
+  }
+
+  // Reconcile the campaign list against the live Drive "Evertrust Campaigns" folder
+  // (the source of truth) via the read-only erp-campaigns-list n8n webhook. Archives
+  // campaigns whose folder was deleted (driveMissing → hidden from list), un-archives
+  // ones that reappeared. Audited as a bulk UPDATE. campaigns:write — it mutates rows.
+  @RequirePermissions('campaigns:write')
+  @Post('sync')
+  async sync(
+    @OrgId() orgId: string,
+    @Req() req: Request,
+  ): Promise<CampaignSyncResultDto> {
+    const result = await this.campaigns.syncFromDrive(orgId);
+    setAuditContext(req, {
+      entity: 'campaigns',
+      action: 'UPDATE',
+      after: result,
+    });
+    return result;
   }
 
   @RequirePermissions('campaigns:write')

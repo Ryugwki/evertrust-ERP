@@ -22,6 +22,7 @@ function svc() {
       matchMethod: 'email',
       analysis: { overall_summary: 'x' },
       transcript: '[00:00] Hanna: hello\n[00:05] Vic: hi',
+      docUrl: 'https://docs.google.com/document/d/DOC1/edit',
       meetingDate: '2026-06-03',
       createdAt: new Date('2026-06-03T00:00:00Z'),
       __seq: 2,
@@ -204,6 +205,59 @@ describe('MeetingsService.ingest (n8n push)', () => {
     const row = meetings.rows.find((m) => m.sessionId === 's-up')!;
     expect(row.transcript).toBe('[00:00] Hanna: hi\n[00:05] Vic: hello');
     expect(row.score).toBe(91);
+  });
+});
+
+describe('MeetingsService.sync (from Drive folder)', () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  it('mirrors the folder: updates matched docs, prunes meetings whose doc is gone', async () => {
+    const { service, meetings } = svc();
+    let calledUrl = '';
+    global.fetch = (async (url: string) => {
+      calledUrl = url;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          meetings: [
+            {
+              docId: 'DOC1',
+              docName: 'The Codest - Sales Coach Report',
+              docUrl: 'https://docs.google.com/document/d/DOC1/edit',
+              clientCompany: 'The Codest',
+              aeName: 'Hanna',
+              persona: 'Alex Hormozi',
+              summary: 'ok',
+              strengthsText: '1. Anchor High\n   ...',
+              performance: { overall: 68, communication: 75 },
+              client: { overall: 70 },
+            },
+          ],
+        }),
+      };
+    }) as unknown as typeof fetch;
+
+    const r = await service.sync(ORG);
+    expect(calledUrl).toBe('https://n8n.test/webhook/erp-sales-meetings');
+    expect(r).toMatchObject({ configured: true, scanned: 1, imported: 0, updated: 1, pruned: 1 });
+
+    // m1 (docUrl → DOC1) updated to the folder doc; m2 (no docUrl) pruned.
+    const m1 = meetings.rows.find((m) => m.id === 'm1')!;
+    expect(m1.score).toBe(68);
+    expect(m1.clientCompany).toBe('The Codest');
+    expect(meetings.rows.find((m) => m.id === 'm2')).toBeUndefined();
+  });
+
+  it('reports not-configured when N8N_API_URL is unset', async () => {
+    const meetings = new FakeTable([]);
+    const { db } = makeFakeDb(new Map<unknown, FakeTable>([[schema.meetings, meetings]]));
+    const config = { get: () => '' } as unknown as ConfigService;
+    const r = await new MeetingsService(db, config).sync(ORG);
+    expect(r.configured).toBe(false);
   });
 });
 

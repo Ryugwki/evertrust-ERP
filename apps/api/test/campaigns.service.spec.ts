@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { schema } from '@evertrust/db';
 import type { CreateCampaignDto } from '@evertrust/shared';
 import { CampaignsService } from '../src/campaigns/campaigns.service';
@@ -9,6 +9,8 @@ const ORG_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const ORG_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const USER = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 const WEBHOOK = 'https://evertrustgmbh.app.n8n.cloud/webhook/aim-deploy-campaign';
+const LIST_WEBHOOK =
+  'https://evertrustgmbh.app.n8n.cloud/webhook/erp-campaigns-list';
 
 const DTO: CreateCampaignDto = {
   niche: 'LED',
@@ -21,14 +23,19 @@ const DTO: CreateCampaignDto = {
   whatsappNumber: '+4915112345678',
 };
 
-// Minimal AppConfigService stub — the service only reads N8N_AIM_WEBHOOK_URL.
-function makeConfig(webhookUrl: string): AppConfigService {
+// Minimal AppConfigService stub — the service reads N8N_AIM_WEBHOOK_URL (deploy)
+// and N8N_CAMPAIGNS_LIST_WEBHOOK_URL (Drive sync).
+function makeConfig(aimUrl: string, campaignsListUrl = ''): AppConfigService {
+  const values: Record<string, string> = {
+    N8N_AIM_WEBHOOK_URL: aimUrl,
+    N8N_CAMPAIGNS_LIST_WEBHOOK_URL: campaignsListUrl,
+  };
   return {
-    get: (k: string) => (k === 'N8N_AIM_WEBHOOK_URL' ? webhookUrl : ''),
+    get: (k: string) => values[k] ?? '',
   } as unknown as AppConfigService;
 }
 
-function seed(webhookUrl = '') {
+function seed(webhookUrl = '', campaignsListUrl = '') {
   const campaigns = new FakeTable([]);
   const arsenalRuns = new FakeTable([]);
   const { db } = makeFakeDb(
@@ -38,10 +45,39 @@ function seed(webhookUrl = '') {
     ]),
   );
   return {
-    service: new CampaignsService(db, makeConfig(webhookUrl)),
+    service: new CampaignsService(db, makeConfig(webhookUrl, campaignsListUrl)),
     campaigns,
     arsenalRuns,
   };
+}
+
+// fetch mock returning the erp-campaigns-list webhook payload.
+function mockDriveList(folders: { id: string; name?: string }[]) {
+  globalThis.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      folderUrl: 'https://drive.google.com/drive/folders/parent',
+      campaigns: folders.map((f) => ({ id: f.id, name: f.name ?? f.id })),
+    }),
+  }) as unknown as typeof fetch;
+}
+
+// Create a DEPLOYED campaign whose Drive folder id is `folderId` (mocks the AIM
+// deploy webhook just for this create call).
+async function deploy(
+  service: CampaignsService,
+  folderId: string,
+): Promise<string> {
+  globalThis.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      success: true,
+      folderId,
+      folderUrl: `https://drive.google.com/drive/folders/${folderId}`,
+    }),
+  }) as unknown as typeof fetch;
+  const row = await service.create(ORG_A, DTO, USER);
+  return row.id;
 }
 
 const originalFetch = globalThis.fetch;
@@ -179,6 +215,87 @@ describe('CampaignsService — delete', () => {
     const c = await service.create(ORG_A, DTO, USER);
     await expect(service.delete(ORG_B, c.id)).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+});
+
+describe('CampaignsService — Drive sync (reconcile against the folder)', () => {
+  // WHY: the Drive "Evertrust Campaigns" folder is the SOURCE OF TRUTH. A campaign
+  // whose folder was deleted must drop out of the list (archived, not destroyed);
+  // one whose folder still exists must stay. This is the whole point of the sync —
+  // n8n execution history can't be trusted to reflect deletions.
+  it('archives a DEPLOYED campaign whose folder is gone and keeps a present one', async () => {
+    const { service, campaigns } = seed(WEBHOOK, LIST_WEBHOOK);
+    const gone = await deploy(service, 'F1');
+    const kept = await deploy(service, 'F2');
+    expect((await service.list(ORG_A)).length).toBe(2);
+
+    // Drive now only contains F2.
+    mockDriveList([{ id: 'F2', name: 'KEPT' }]);
+    const res = await service.syncFromDrive(ORG_A);
+
+    expect(res.driveCount).toBe(1);
+    expect(res.checked).toBe(2);
+    expect(res.markedMissing).toBe(1);
+    expect(res.restored).toBe(0);
+
+    // F1 is archived OUT of the active list, but the row is kept + flagged.
+    expect((await service.list(ORG_A)).map((c) => c.id)).toEqual([kept]);
+    const goneRow = campaigns.rows.find((r) => r.id === gone)!;
+    expect(goneRow.driveMissing).toBe(true);
+    expect(goneRow.driveCheckedAt).toBeInstanceOf(Date);
+  });
+
+  // WHY: deletions can be undone — re-adding the folder must bring the campaign back.
+  it('un-archives a campaign when its folder reappears in Drive', async () => {
+    const { service, campaigns } = seed(WEBHOOK, LIST_WEBHOOK);
+    const id = await deploy(service, 'F9');
+    campaigns.rows.find((r) => r.id === id)!.driveMissing = true; // prior sync archived it
+    expect((await service.list(ORG_A)).length).toBe(0);
+
+    mockDriveList([{ id: 'F9', name: 'BACK' }]);
+    const res = await service.syncFromDrive(ORG_A);
+
+    expect(res.restored).toBe(1);
+    expect(res.markedMissing).toBe(0);
+    expect((await service.list(ORG_A)).map((c) => c.id)).toEqual([id]);
+  });
+
+  // WHY: DRAFT/FAILED rows have no folder yet — they aren't Drive-reconcilable and
+  // must be left alone. Folders with no ERP row are surfaced as `untracked`, not
+  // auto-imported.
+  it('leaves folder-less (DRAFT) campaigns alone and reports untracked Drive folders', async () => {
+    const { service } = seed('', LIST_WEBHOOK); // no AIM webhook → DRAFT, no folder id
+    const draft = await service.create(ORG_A, DTO, USER);
+    expect(draft.status).toBe('DRAFT');
+
+    mockDriveList([{ id: 'X1', name: 'EXTERNAL' }]);
+    const res = await service.syncFromDrive(ORG_A);
+
+    expect(res.checked).toBe(0);
+    expect(res.markedMissing).toBe(0);
+    expect(res.untracked).toEqual([{ id: 'X1', name: 'EXTERNAL' }]);
+    expect((await service.list(ORG_A)).map((c) => c.id)).toEqual([draft.id]);
+  });
+
+  // WHY: a sync failure must be OBSERVABLE (503), never a silent no-op that leaves
+  // stale rows looking valid.
+  it('throws ServiceUnavailable when the sync webhook is not configured', async () => {
+    const { service } = seed('', '');
+    await expect(service.syncFromDrive(ORG_A)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+
+  it('throws ServiceUnavailable when the webhook returns non-200', async () => {
+    const { service } = seed('', LIST_WEBHOOK);
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => ({}),
+    }) as unknown as typeof fetch;
+    await expect(service.syncFromDrive(ORG_A)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
     );
   });
 });

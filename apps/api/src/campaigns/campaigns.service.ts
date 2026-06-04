@@ -1,7 +1,14 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
-import type { CreateCampaignDto } from '@evertrust/shared';
+import type { CampaignSyncResultDto, CreateCampaignDto } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import { tenantScope } from '../common/tenant';
 import { AppConfigService } from '../config/app-config.service';
@@ -17,23 +24,40 @@ interface AimDeployResult {
   folderUrl?: string;
 }
 
+// One campaign folder as reported by the read-only erp-campaigns-list webhook
+// (a subfolder of the Drive "Evertrust Campaigns" folder).
+interface DriveCampaign {
+  id: string;
+  name: string | null;
+}
+
 // Growth Engine. Persists the campaign (the AIM target) and fires the AIM n8n
 // webhook server-side (ERP-first: Workflow ← API ← DB ← Audit). The webhook call
 // is best-effort and NEVER throws out of create() — a failed deploy is recorded as
 // FAILED + deployError so the operator sees it, instead of 500-ing the launch.
 @Injectable()
 export class CampaignsService {
+  private readonly logger = new Logger(CampaignsService.name);
+
   constructor(
     @Inject(DB) private readonly db: DbClient,
     private readonly config: AppConfigService,
   ) {}
 
-  // The tenant's campaigns, newest-first.
+  // The tenant's ACTIVE campaigns, newest-first. Campaigns archived by a Drive sync
+  // (driveMissing — their Drive folder was deleted) are hidden here; the row is kept
+  // for audit/history, it just no longer clutters the list. A re-sync that finds the
+  // folder again un-archives it.
   async list(orgId: string): Promise<CampaignRow[]> {
     return this.db
       .select()
       .from(schema.campaigns)
-      .where(tenantScope(orgId, schema.campaigns))
+      .where(
+        and(
+          tenantScope(orgId, schema.campaigns),
+          eq(schema.campaigns.driveMissing, false),
+        ),
+      )
       .orderBy(desc(schema.campaigns.createdAt));
   }
 
@@ -73,6 +97,7 @@ export class CampaignsService {
         salesCalendarId: dto.salesCalendarId,
         whatsappNumber: dto.whatsappNumber,
         status: 'DRAFT',
+        driveMissing: false,
       })
       .returning();
 
@@ -92,6 +117,70 @@ export class CampaignsService {
       .returning();
     row = updated[0] ?? row;
     return row;
+  }
+
+  // Reconcile the tenant's campaigns against the live Drive "Evertrust Campaigns"
+  // folder (the SOURCE OF TRUTH). The ERP can't read Drive, so it GETs the read-only
+  // erp-campaigns-list n8n webhook (which scans the folder). DEPLOYED campaigns whose
+  // folder is gone are archived (driveMissing=true → hidden from list); ones whose
+  // folder reappears are un-archived. DRAFT/FAILED rows (no folder yet) are untouched.
+  // Throws ServiceUnavailable if the webhook is unset/unreachable — a sync failure is
+  // OBSERVABLE, never a silent no-op that would wrongly leave stale rows visible.
+  async syncFromDrive(orgId: string): Promise<CampaignSyncResultDto> {
+    const url = this.campaignsListWebhookUrl();
+    if (!url) {
+      throw new ServiceUnavailableException(
+        'Campaign Drive-sync is not configured (set N8N_CAMPAIGNS_LIST_WEBHOOK_URL or N8N_API_URL).',
+      );
+    }
+    const drive = await this.fetchDriveCampaigns(url);
+    const presentIds = new Set(drive.folders.map((f) => f.id));
+
+    const rows = await this.db
+      .select()
+      .from(schema.campaigns)
+      .where(tenantScope(orgId, schema.campaigns));
+
+    const now = new Date();
+    let checked = 0;
+    let markedMissing = 0;
+    let restored = 0;
+    const trackedIds = new Set<string>();
+
+    for (const row of rows) {
+      // Only rows that actually have a Drive folder are reconcilable against Drive.
+      if (!row.driveFolderId) continue;
+      trackedIds.add(row.driveFolderId);
+      checked++;
+      const present = presentIds.has(row.driveFolderId);
+      const patch: CampaignPatch = { driveCheckedAt: now };
+      if (!present && !row.driveMissing) {
+        patch.driveMissing = true;
+        markedMissing++;
+      } else if (present && row.driveMissing) {
+        patch.driveMissing = false;
+        restored++;
+      }
+      await this.db
+        .update(schema.campaigns)
+        .set(patch)
+        .where(eq(schema.campaigns.id, row.id));
+    }
+
+    // Folders that exist in Drive but match no ERP campaign — created/managed outside
+    // the ERP. Surfaced for visibility (the ERP does not auto-import them).
+    const untracked = drive.folders
+      .filter((f) => !trackedIds.has(f.id))
+      .map((f) => ({ id: f.id, name: f.name }));
+
+    return {
+      driveCount: drive.folders.length,
+      checked,
+      markedMissing,
+      restored,
+      folderUrl: drive.folderUrl,
+      untracked,
+    };
   }
 
   // Delete a campaign (ERP record only — the Google Drive folder + leads are NOT
@@ -156,5 +245,63 @@ export class CampaignsService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  // GET the read-only erp-campaigns-list webhook and parse its
+  // { folderUrl, campaigns: [{ id, name }] } payload into the Drive folder list.
+  // Throws ServiceUnavailable on any failure (kept observable, like PersonasService).
+  private async fetchDriveCampaigns(
+    url: string,
+  ): Promise<{ folderUrl: string | null; folders: DriveCampaign[] }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const res = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new ServiceUnavailableException(
+          `Campaign Drive-sync returned HTTP ${res.status}.`,
+        );
+      }
+      const json = (await res.json().catch(() => ({}))) as {
+        folderUrl?: unknown;
+        campaigns?: { id?: unknown; name?: unknown }[];
+      };
+      const folders: DriveCampaign[] = Array.isArray(json?.campaigns)
+        ? json.campaigns
+            .filter((c) => c && typeof c.id === 'string' && c.id.length > 0)
+            .map((c) => ({
+              id: String(c.id),
+              name: typeof c.name === 'string' ? c.name : null,
+            }))
+        : [];
+      return {
+        folderUrl: typeof json?.folderUrl === 'string' ? json.folderUrl : null,
+        folders,
+      };
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      this.logger.warn(
+        `campaigns Drive-sync GET ${url} failed: ${err instanceof Error ? err.message : 'error'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Campaign Drive-sync call failed — check that the CAMPAIGNS LIST workflow is active.',
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // The erp-campaigns-list webhook URL: the explicit env override, else derived from
+  // the n8n instance base (N8N_API_URL). Blank both = sync disabled.
+  private campaignsListWebhookUrl(): string {
+    const explicit = (
+      this.config.get('N8N_CAMPAIGNS_LIST_WEBHOOK_URL') ?? ''
+    ).trim();
+    if (explicit) return explicit;
+    const base = (this.config.get('N8N_API_URL') ?? '').trim().replace(/\/+$/, '');
+    return base ? `${base}/webhook/erp-campaigns-list` : '';
   }
 }

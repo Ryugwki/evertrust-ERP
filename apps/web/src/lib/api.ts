@@ -19,6 +19,7 @@ import {
   AssignmentDto,
   AssignTenderDto,
   CampaignDto,
+  CampaignSyncResultDto,
   CreateApprovalRequestDto,
   CreateCampaignDto,
   CreateCustomerDto,
@@ -476,6 +477,14 @@ export const api = {
     // Delete a campaign (ERP record only — the Drive folder + leads are untouched).
     delete: (id: string) =>
       request<void>(`/campaigns/${id}`, { method: 'DELETE' }),
+
+    // Reconcile the list against the live Drive "Evertrust Campaigns" folder:
+    // archives campaigns whose folder was deleted, un-archives ones that reappeared.
+    sync: () =>
+      request<CampaignSyncResultDto>('/campaigns/sync', {
+        method: 'POST',
+        schema: CampaignSyncResultDto,
+      }),
   },
 
   // ---- Arsenal: manual stage triggers + run history ----

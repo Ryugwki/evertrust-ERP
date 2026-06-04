@@ -38,6 +38,13 @@ export const EnvSchema = z.object({
   // persists as DRAFT — so the feature is safe to run before the webhook is set.
   N8N_AIM_WEBHOOK_URL: z.string().default(''),
 
+  // Drive-as-source-of-truth campaign sync. A read-only n8n webhook
+  // (EVERTRUST - CAMPAIGNS LIST workflow) that scans the Drive "Evertrust Campaigns"
+  // folder and returns its live subfolders, so POST /campaigns/sync can archive
+  // campaigns whose folder was deleted. Falls back to ${N8N_API_URL}/webhook/
+  // erp-campaigns-list when blank; blank BOTH = sync is disabled (returns 503).
+  N8N_CAMPAIGNS_LIST_WEBHOOK_URL: z.string().default(''),
+
   // Arsenal stage webhooks (the "Run now" triggers). Each blank = that stage's
   // trigger is disabled (the API rejects the run + the button hides). The
   // schedule-only n8n workflows (Bazooka, Reply Glock, Sleeper) need a Webhook

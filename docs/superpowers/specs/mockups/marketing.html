@@ -71,11 +71,62 @@
   .pstage .dot{width:8px;height:8px;border-radius:50%;background:var(--good)}.pstage .nm{font-weight:600;flex:0 0 160px}.pstage .rn{color:var(--muted);flex:0 0 140px;font-size:12px}.pstage .mt{flex:1}
   .spark{display:flex;gap:2px;align-items:flex-end;height:24px}.spark i{width:5px;background:var(--sky);border-radius:1px;opacity:.7}
   .note{margin-top:16px;color:var(--faint);font-size:11px;text-align:center}
+  /* ===== Growth Engine + Campaigns tabs ===== */
+  .h{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin:0 0 12px}
+  .gbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .qa{border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .qa:hover{border-color:rgba(56,189,248,.4)}
+  .qa.primary{background:var(--sky);color:#04222e;border-color:transparent}
+  .menu{position:relative}
+  .pop{position:absolute;top:100%;left:0;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;display:none;z-index:40;min-width:180px}
+  .menu.open .pop{display:block}
+  .pop button{display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--txt);padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px}.pop button:hover{background:var(--panel2)}
+  .engine{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--line);border-radius:11px;background:var(--panel2);padding:9px 13px;margin-bottom:20px;font-size:12.5px}
+  .engine .lab{color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;margin-right:4px}
+  .est{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}.est b{color:var(--txt)}
+  .engine .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .dot.ok{background:var(--good)}.dot.idle{background:var(--faint)}.dot.run{background:var(--sky)}
+  .engine .sep{color:var(--line)}.engine .next{margin-left:auto;color:var(--faint)}
+  .seq{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+  .sq{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:13px 12px;transition:.2s}
+  .sq .ix{font-size:9.5px;color:var(--faint);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .sq .nm{font-weight:700;font-size:13px;margin:5px 0 2px}
+  .sq .rn{font-size:11px;color:var(--faint)}
+  .sq .v{font-size:24px;font-weight:800;margin-top:8px}
+  .sq .run{margin-top:10px;width:100%;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:6px;font-size:12px;font-weight:600;cursor:pointer}
+  .sq .run:hover{border-color:rgba(56,189,248,.4);color:var(--txt)}
+  .sq.run-on{box-shadow:inset 0 0 0 1px rgba(56,189,248,.5)}
+  @media(max-width:880px){.seq{grid-template-columns:repeat(2,1fr)}}
+  .act{border:none;border-radius:9px;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap}
+  .act.sky{background:var(--sky);color:#04222e}.act.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  .cstats{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+  .camp{border:1px solid var(--line);border-radius:12px;background:var(--panel);margin-bottom:10px}
+  .camp>summary{list-style:none;cursor:pointer;padding:13px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .camp>summary::-webkit-details-marker{display:none}.camp>summary:before{content:"▸";color:var(--faint);font-size:11px}.camp[open]>summary:before{content:"▾"}
+  .cn{font-weight:600;font-size:14px;flex:0 0 210px}
+  #campaigns .pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:rgba(52,211,153,.14);color:var(--good)}
+  #campaigns .pill.run{background:rgba(56,189,248,.14);color:var(--sky)}
+  #campaigns .pill.sch{background:rgba(251,191,36,.14);color:var(--mid)}
+  .miniF{display:flex;gap:13px;font-size:12px;color:var(--muted)}.miniF b{color:var(--txt)}
+  .cact{margin-left:auto;display:flex;gap:6px}.cact .qa{padding:6px 11px;font-size:12px}
+  .cbody{padding:2px 16px 14px 34px;color:var(--muted);font-size:12.5px}
+  #campaigns .carow{display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line)}#campaigns .carow:last-child{border:none}
+  #campaigns .carow .stg{flex:0 0 130px;color:var(--txt);font-weight:600}#campaigns .carow .tm{flex:0 0 90px;color:var(--faint)}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 20px;overflow:auto}
+  .overlay.on{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:520px;width:100%;padding:20px}
+  .modal h3{margin:0 0 4px;font-size:17px}.modal .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+  .modal .x{float:right;cursor:pointer;color:var(--muted);font-size:18px;line-height:1}
+  .fld{margin-bottom:8px}.fld .fl{font-size:10.5px;color:var(--faint);margin-bottom:3px}
+  .fld input,.fld textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--txt);font:13px/1.5 inherit;padding:8px 10px;resize:vertical}
+  .drow{display:flex;gap:8px;margin-top:12px}
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--good);border-radius:10px;padding:11px 15px;font-size:13px;z-index:60;opacity:0;transform:translateY(10px);transition:.22s;max-width:330px}
+  .toast.on{opacity:1;transform:none}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="phead"><h1>Marketing</h1><p>Growth-Engine report + RAG Agent reply drafts awaiting approval. <em style="color:var(--faint)">(mockup v3 — full report)</em></p></div>
+  <div class="phead"><h1>Marketing</h1><p>AIM new campaigns · track what's deployed · review RAG drafts · read the Growth-Engine report. <em style="color:var(--faint)">(mockup v4)</em></p></div>
   <div class="funnel">
     <div class="kpi"><div class="v">7</div><div class="k">Leads</div></div>
     <div class="kpi"><div class="v">8</div><div class="k">Emails</div></div>
@@ -86,6 +137,8 @@
   <div class="toptabs">
     <div class="toptab on" data-v="drafts" onclick="vw(this)">Draft review <span class="b">3</span></div>
     <div class="toptab" data-v="report" onclick="vw(this)">Report</div>
+    <div class="toptab" data-v="growth" onclick="vw(this)">Growth Engine</div>
+    <div class="toptab" data-v="campaigns" onclick="vw(this)">Campaigns</div>
   </div>
 
   <div class="view on" id="drafts">
@@ -155,8 +208,100 @@
     </div>
   </div>
 
-  <p class="note">Mockup v3 — full Report (funnel · RAG draft funnel · outcomes · timing · tender attribution · per-stage). Draft tab unchanged from v2.</p>
+  <div class="view" id="growth">
+    <div class="gbar">
+      <button class="qa primary" onclick="aim()">🎯 AIM — Lock &amp; Load</button>
+      <div class="menu" id="stagemenu"><button class="qa" onclick="toggleMenu(event)">▷ Run a stage ▾</button>
+        <div class="pop">
+          <button onclick="runStage('Lead Satellite','leads')">Lead Satellite</button>
+          <button onclick="runStage('Ammo Forge','ammo')">Ammo Forge</button>
+          <button onclick="runStage('Reach Bazooka','baz')">Reach Bazooka</button>
+          <button onclick="runStage('Reply Glock','glk')">Reply Glock</button>
+          <button onclick="runStage('RAG Agent','rag')">RAG Agent</button>
+          <button onclick="runStage('Sleeper Grenade','slp')">Sleeper Grenade</button>
+        </div>
+      </div>
+      <button class="qa" onclick="sync()">⟳ Sync</button>
+    </div>
+
+    <div class="engine">
+      <span class="lab">Engine</span>
+      <span class="est"><span class="dot ok"></span>Lead Sat <b id="leads">7</b></span><span class="sep">·</span>
+      <span class="est"><span class="dot idle"></span>Ammo <b id="ammo">—</b></span><span class="sep">·</span>
+      <span class="est"><span class="dot ok"></span>Bazooka <b id="baz">8</b></span><span class="sep">·</span>
+      <span class="est"><span class="dot run"></span>Glock <b id="glk">2/1</b></span><span class="sep">·</span>
+      <span class="est"><span class="dot ok"></span>RAG <b id="rag">3</b></span><span class="sep">·</span>
+      <span class="est"><span class="dot ok"></span>Sleeper <b id="slp">2</b></span>
+      <span class="next">next: Bazooka 08:00 · 0 errors</span>
+    </div>
+
+    <p class="h">AIM sequence — the arsenal pipeline</p>
+    <div class="seq">
+      <div class="sq" id="sq-leads"><div class="ix">01 · Target</div><div class="nm">Lead Satellite</div><div class="rn">09:59 · 100% ok</div><div class="v" id="v-leads">7</div><button class="run" onclick="runStage('Lead Satellite','leads')">▷ Run</button></div>
+      <div class="sq" id="sq-ammo"><div class="ix">02 · Arm</div><div class="nm">Ammo Forge</div><div class="rn">idle</div><div class="v" id="v-ammo" style="color:var(--faint)">—</div><button class="run" onclick="runStage('Ammo Forge','ammo')">▷ Run</button></div>
+      <div class="sq" id="sq-baz"><div class="ix">03 · Fire</div><div class="nm">Reach Bazooka</div><div class="rn">08:00 · ok</div><div class="v" id="v-baz">8</div><button class="run" onclick="runStage('Reach Bazooka','baz')">▷ Run</button></div>
+      <div class="sq" id="sq-glk"><div class="ix">04 · Catch</div><div class="nm">Reply Glock</div><div class="rn">running…</div><div class="v" id="v-glk" style="color:var(--sky)">2/1</div><button class="run" onclick="runStage('Reply Glock','glk')">▷ Run</button></div>
+      <div class="sq" id="sq-rag"><div class="ix">05 · Answer</div><div class="nm">RAG Agent</div><div class="rn">10:44 · ok</div><div class="v" id="v-rag">3</div><button class="run" onclick="runStage('RAG Agent','rag')">▷ Run</button></div>
+      <div class="sq" id="sq-slp"><div class="ix">06 · Revive</div><div class="nm">Sleeper Grenade</div><div class="rn">1 run · ok</div><div class="v" id="v-slp">2</div><button class="run" onclick="runStage('Sleeper Grenade','slp')">▷ Run</button></div>
+    </div>
+  </div>
+
+  <div class="view" id="campaigns">
+    <div class="cstats">
+      <div class="kpi"><div class="v">3</div><div class="k">Campaigns</div></div>
+      <div class="kpi"><div class="v">2</div><div class="k">Active</div></div>
+      <div class="kpi"><div class="v">14</div><div class="k">Leads</div></div>
+      <div class="kpi"><div class="v">3</div><div class="k">Replies</div></div>
+      <div class="kpi"><div class="v">1</div><div class="k">Meetings</div></div>
+    </div>
+
+    <p class="h">Deployed by Growth Engine — track &amp; drill in</p>
+
+    <details class="camp" open>
+      <summary>
+        <span class="cn">Container Poland 2026</span><span class="pill">DEPLOYED</span>
+        <span class="miniF"><span>Leads <b>7</b></span><span>Emails <b>8</b></span><span>Replies <b>2</b></span><span>Mtg <b>1</b></span></span>
+        <span class="cact"><button class="qa" onclick="event.preventDefault();runStage('Reach Bazooka','baz')">▷ Run stage</button><button class="qa" onclick="event.preventDefault();toast('Opening campaign…')">Open</button></span>
+      </summary>
+      <div class="cbody">
+        <div class="carow"><span class="stg">Lead Satellite</span><span class="tm">09:59</span><span>Found 7 leads (PL · container)</span></div>
+        <div class="carow"><span class="stg">Reach Bazooka</span><span class="tm">08:00</span><span>Sent 8 (news-hook + COLD-AGG)</span></div>
+        <div class="carow"><span class="stg">Reply Glock</span><span class="tm">10:12</span><span>2 replies · 1 meeting booked</span></div>
+        <div class="carow"><span class="stg">RAG Agent</span><span class="tm">10:44</span><span>3 reply drafts — awaiting approval</span></div>
+      </div>
+    </details>
+
+    <details class="camp">
+      <summary>
+        <span class="cn">LED Retrofit Berlin 2026</span><span class="pill run">RUNNING</span>
+        <span class="miniF"><span>Leads <b>5</b></span><span>Emails <b>6</b></span><span>Replies <b>1</b></span><span>Mtg <b>0</b></span></span>
+        <span class="cact"><button class="qa" onclick="event.preventDefault();runStage('Reply Glock','glk')">▷ Run stage</button><button class="qa" onclick="event.preventDefault();toast('Opening campaign…')">Open</button></span>
+      </summary>
+      <div class="cbody">
+        <div class="carow"><span class="stg">Lead Satellite</span><span class="tm">Yesterday</span><span>Found 5 leads (DE · LED retrofit)</span></div>
+        <div class="carow"><span class="stg">Ammo Forge</span><span class="tm">Yesterday</span><span>Forged news-hook template</span></div>
+        <div class="carow"><span class="stg">Reach Bazooka</span><span class="tm">08:00</span><span>Sent 6 · 1 reply pending Glock</span></div>
+      </div>
+    </details>
+
+    <details class="camp">
+      <summary>
+        <span class="cn">Straßenbeleuchtung München 2026</span><span class="pill sch">SCHEDULED</span>
+        <span class="miniF"><span>Leads <b>—</b></span><span>Emails <b>—</b></span><span>Replies <b>—</b></span><span>Mtg <b>—</b></span></span>
+        <span class="cact"><button class="qa" onclick="event.preventDefault();toast('Deploying campaign…')">▷ Deploy</button><button class="qa" onclick="event.preventDefault();toast('Opening campaign…')">Open</button></span>
+      </summary>
+      <div class="cbody">
+        <div class="carow"><span class="stg">AIM</span><span class="tm">locked</span><span>DE · street lighting · München — first Bazooka 08:00 tomorrow</span></div>
+      </div>
+    </details>
+  </div>
+
+  <p class="note">Mockup v4 — 4 tabs: Draft review · Report · Growth Engine (AIM + arsenal sequence) · Campaigns (deployed tracking). Buttons are mock (toasts/modal).</p>
 </div>
+
+<!-- overlay + toast (shared by Growth Engine + Campaigns) -->
+<div class="overlay" id="ov" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
 
 <script>
 const DRAFTS=[
@@ -204,6 +349,36 @@ function render(){const d=DRAFTS.find(x=>x.id===cur);document.getElementById("de
 function pick(id){cur=id;render();}
 function vw(el){document.querySelectorAll(".toptab").forEach(t=>t.classList.remove("on"));el.classList.add("on");var v=el.getAttribute("data-v");document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id===v));}
 renderList();render();
+
+/* ---- Growth Engine + Campaigns (merged) ---- */
+let tT;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');clearTimeout(tT);tT=setTimeout(()=>t.classList.remove('on'),2600);}
+function openModal(html){document.getElementById('modal').innerHTML=html;document.getElementById('ov').classList.add('on');}
+function closeModal(){document.getElementById('ov').classList.remove('on');}
+function toggleMenu(e){e.stopPropagation();document.getElementById('stagemenu').classList.toggle('open');}
+document.addEventListener('click',function(){var m=document.getElementById('stagemenu');if(m)m.classList.remove('open');});
+function runStage(name,key){
+  toast(name+' — running…');
+  var m=document.getElementById('stagemenu');if(m)m.classList.remove('open');
+  var card=document.getElementById('sq-'+key);if(card)card.classList.add('run-on');
+  setTimeout(function(){
+    if(key!=='glk'){
+      var e=document.getElementById(key);if(e){var n=parseInt(e.textContent)||0;e.textContent=n+1;}
+      var sv=document.getElementById('v-'+key);if(sv){var n2=parseInt(sv.textContent)||0;sv.textContent=n2+1;}
+    }
+    if(card)card.classList.remove('run-on');
+    toast(name+' done ✓ · +1');
+  },900);
+}
+function sync(){toast('Syncing from n8n…');setTimeout(function(){toast('Synced ✓ · 0 new errors');},900);}
+function aim(){
+  openModal('<span class="x" onclick="closeModal()">✕</span><h3>🎯 AIM — Lock &amp; Load</h3><div class="sub">Target a niche, lock a campaign — the arsenal sequence runs it. (mock)</div>'+
+    '<div class="fld"><div class="fl">Niche</div><input placeholder="LED retrofit"></div>'+
+    '<div class="fld"><div class="fl">Country / region</div><input placeholder="Germany"></div>'+
+    '<div class="fld"><div class="fl">Project</div><input placeholder="LED Retrofit Berlin 2026" id="aim-proj"></div>'+
+    '<div class="drow"><button class="act sky" onclick="deploy()">Deploy campaign</button><button class="act ghost" onclick="closeModal()">Cancel</button></div>');
+}
+function deploy(){var p=(document.getElementById('aim-proj').value)||'new campaign';closeModal();toast('🎯 Launched: '+p+' — arsenal running');}
 </script>
 </body>
 </html>

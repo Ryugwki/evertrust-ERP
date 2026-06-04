@@ -645,12 +645,15 @@ export const LinkMeetingDto = z.object({
 });
 export type LinkMeetingDto = z.infer<typeof LinkMeetingDto>;
 
-// POST /sales/meetings/sync — backfill from the n8n Sales Agent workflow.
+// POST /sales/meetings/sync — mirror the analysis-report Docs in the Drive
+// folder: imported (new), updated (existing), pruned (in ERP but the Doc is gone
+// from the folder). configured=false means N8N_API_URL isn't set.
 export const MeetingSyncResultDto = z.object({
   configured: z.boolean(),
   scanned: z.number(),
   imported: z.number(),
-  attributed: z.number(),
+  updated: z.number(),
+  pruned: z.number(),
 });
 export type MeetingSyncResultDto = z.infer<typeof MeetingSyncResultDto>;
 
@@ -946,6 +949,13 @@ export const CampaignDto = z.object({
   status: CampaignStatus,
   driveFolderId: z.string().nullable(),
   driveFolderUrl: z.string().nullable(),
+  // Drive reconcile state. The Drive "Evertrust Campaigns" folder is the source of
+  // truth for which campaigns exist; a sync (POST /campaigns/sync) flips
+  // driveMissing=true when a DEPLOYED campaign's folder is gone (it's then archived
+  // out of the active list, not deleted — history is kept). driveCheckedAt = when
+  // the last reconcile ran.
+  driveMissing: z.boolean(),
+  driveCheckedAt: z.string().nullable(),
   deployError: z.string().nullable(),
   deployedBy: z.string().uuid().nullable(),
   deployedAt: z.string().nullable(),
@@ -983,6 +993,26 @@ export const CreateCampaignDto = z.object({
   whatsappNumber: z.string().min(1).max(40),
 });
 export type CreateCampaignDto = z.infer<typeof CreateCampaignDto>;
+
+// Result of POST /campaigns/sync — reconcile the ERP campaign list against the live
+// Drive "Evertrust Campaigns" folder (the source of truth). The ERP can't read Drive
+// directly, so the sync GETs a read-only n8n webhook that scans the folder. n8n
+// execution history can keep a deleted campaign around; the Drive scan can't — so
+// this is what makes a folder you delete in Drive drop out of the ERP list.
+//   driveCount    = campaign folders currently in Drive
+//   checked       = ERP campaigns with a Drive folder that were reconciled
+//   markedMissing = rows newly archived this run (folder gone)
+//   restored      = rows un-archived this run (folder reappeared)
+//   untracked     = Drive folders with no matching ERP campaign (made outside the ERP)
+export const CampaignSyncResultDto = z.object({
+  driveCount: z.number().int(),
+  checked: z.number().int(),
+  markedMissing: z.number().int(),
+  restored: z.number().int(),
+  folderUrl: z.string().nullable(),
+  untracked: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
+});
+export type CampaignSyncResultDto = z.infer<typeof CampaignSyncResultDto>;
 
 // ---- Arsenal triggers (the "Run now" buttons + the daily scheduler) ----
 // The outbound stages the ERP can fire as n8n webhooks. AIM is excluded — it is

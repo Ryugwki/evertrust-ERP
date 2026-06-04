@@ -113,6 +113,13 @@
       "when": 1780563000000,
       "tag": "0015_personas_transcript",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780564000000,
+      "tag": "0016_campaign_drive_sync",
+      "breakpoints": true
     }
   ]
 }

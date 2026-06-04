@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   jsonb,
   pgTable,
@@ -44,6 +45,13 @@ export const campaigns = pgTable(
     // Populated from the AIM webhook response on a successful deploy.
     driveFolderId: text('drive_folder_id'),
     driveFolderUrl: text('drive_folder_url'),
+    // Drive reconcile state. The Drive "Evertrust Campaigns" folder is the source of
+    // truth for which campaigns exist. A sync (POST /campaigns/sync, via the
+    // erp-campaigns-list n8n webhook) sets driveMissing=true when a DEPLOYED
+    // campaign's folder is gone — the row is then archived OUT of the active list
+    // (kept for audit, not hard-deleted). driveCheckedAt = when it was last reconciled.
+    driveMissing: boolean('drive_missing').notNull().default(false),
+    driveCheckedAt: timestamp('drive_checked_at', { withTimezone: true }),
     // Captured when the deploy call errors (status FAILED) — observable failure.
     deployError: text('deploy_error'),
     deployedBy: uuid('deployed_by').references(() => users.id),

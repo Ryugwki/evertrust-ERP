@@ -63,6 +63,9 @@ interface Analysis {
   weaknesses?: Item[];
   performance_score?: Record<string, Score>;
   client_analysis?: Record<string, Score>;
+  // Drive-synced rows carry the sheet's flattened text (no structured arrays).
+  strengths_text?: string;
+  weaknesses_text?: string;
 }
 
 const PERF: [string, string][] = [
@@ -161,9 +164,9 @@ export function SalesView() {
       onSuccess: (r) =>
         r.configured
           ? toast.success(
-              `Synced ✓ · ${r.imported} new · ${r.attributed} attributed (scanned ${r.scanned})`,
+              `Synced from Drive ✓ · ${r.imported} new · ${r.updated} updated · ${r.pruned} removed (folder has ${r.scanned})`,
             )
-          : toast.error('n8n not configured (set N8N_API_URL / N8N_API_KEY).'),
+          : toast.error('Drive sync not configured (set N8N_API_URL).'),
       onError: (e) => toast.error(e.message ?? 'Sync failed.'),
     });
   }
@@ -184,7 +187,7 @@ export function SalesView() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Sales"
-        description="Read AI meetings synced from n8n, attributed to the campaign that sourced them."
+        description="Sales-call analyses mirrored from the Drive folder. Sync to match the folder; analyze with a persona to add a new report."
         actions={
           <Can permission="campaigns:write">
             <Button
@@ -198,7 +201,7 @@ export function SalesView() {
               ) : (
                 <RefreshCw />
               )}
-              {sync.isPending ? 'Syncing…' : 'Sync from n8n'}
+              {sync.isPending ? 'Syncing…' : 'Sync from Drive'}
             </Button>
           </Can>
         }
@@ -298,7 +301,7 @@ export function SalesView() {
               ) : filtered.length === 0 ? (
                 <p className="p-6 text-center text-sm text-muted-foreground">
                   {all.length === 0
-                    ? 'No meetings yet — press “Sync from n8n”.'
+                    ? 'No meetings yet — press “Sync from Drive”.'
                     : 'No meetings match.'}
                 </p>
               ) : (
@@ -683,6 +686,25 @@ function MeetingDetail({
                   quote={w.evidence_quote}
                 />
               ))}
+            </div>
+          ) : null}
+
+          {/* Drive-synced rows carry the sheet's flattened text, not structured
+              arrays — render it as-is so nothing is lost. */}
+          {!a.strengths?.length && a.strengths_text ? (
+            <div>
+              <SectionLabel>What worked</SectionLabel>
+              <pre className="whitespace-pre-wrap border-l-2 border-emerald-500 pl-3 font-sans text-sm text-foreground/90">
+                {a.strengths_text}
+              </pre>
+            </div>
+          ) : null}
+          {!a.weaknesses?.length && a.weaknesses_text ? (
+            <div>
+              <SectionLabel>What to improve</SectionLabel>
+              <pre className="whitespace-pre-wrap border-l-2 border-amber-500 pl-3 font-sans text-sm text-foreground/90">
+                {a.weaknesses_text}
+              </pre>
             </div>
           ) : null}
         </>
