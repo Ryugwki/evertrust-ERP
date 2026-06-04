@@ -587,6 +587,12 @@ export const api = {
         body: AnalyzeMeetingDto.parse({ persona }),
         schema: MeetingDto,
       }),
+
+    remove: (id: string) =>
+      request<{ id: string }>(`/sales/meetings/${id}`, {
+        method: 'DELETE',
+        schema: z.object({ id: z.string() }),
+      }),
   },
 
   // ---- Sales Agent: coaching personas (Drive folder, via the n8n workflow) ----

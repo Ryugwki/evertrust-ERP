@@ -11,6 +11,8 @@ import { ConfigService } from '@nestjs/config';
 import { and, desc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
 import type {
+  IngestMeetingDto,
+  IngestMeetingResultDto,
   MeetingDto,
   MeetingMatchMethod,
   MeetingSyncResultDto,
@@ -244,6 +246,146 @@ export class MeetingsService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  // n8n push: a completed analysis (after the workflow wrote the Drive Doc +
+  // sheet row). Resolves the org, attributes the campaign by prospect email, and
+  // upserts by (org, sessionId) — so the ERP mirrors the Drive folder in real
+  // time. Partial payloads never erase stored data (transcript etc. preserved).
+  async ingest(payload: IngestMeetingDto): Promise<IngestMeetingResultDto> {
+    const orgId = await this.resolveOrgId();
+    const leadRows: LeadLite[] = await this.db
+      .select({
+        id: schema.leads.id,
+        email: schema.leads.email,
+        website: schema.leads.website,
+        campaignId: schema.leads.campaignId,
+      })
+      .from(schema.leads)
+      .where(tenantScope(orgId, schema.leads));
+    const resolved = this.resolve(payload.clientEmail ?? null, leadRows);
+
+    const analysis =
+      payload.analysis && typeof payload.analysis === 'object'
+        ? (payload.analysis as Record<string, unknown>)
+        : null;
+    const ov = (
+      analysis as { performance_score?: { overall?: { score?: unknown } } } | null
+    )?.performance_score?.overall?.score;
+    const score =
+      typeof payload.score === 'number'
+        ? Math.round(payload.score)
+        : typeof ov === 'number'
+          ? Math.round(ov)
+          : null;
+
+    const existing = (
+      await this.db
+        .select()
+        .from(schema.meetings)
+        .where(
+          and(
+            tenantScope(orgId, schema.meetings),
+            eq(schema.meetings.sessionId, payload.sessionId),
+          ),
+        )
+        .limit(1)
+    )[0];
+
+    if (existing) {
+      const keepManual = existing.matchMethod === 'manual';
+      await this.db
+        .update(schema.meetings)
+        .set({
+          title: payload.title ?? existing.title,
+          clientCompany: payload.clientCompany ?? existing.clientCompany,
+          aeName: payload.aeName ?? existing.aeName,
+          clientContact: payload.clientContact ?? existing.clientContact,
+          clientEmail: payload.clientEmail ?? existing.clientEmail,
+          meetingDate: payload.meetingDate ?? existing.meetingDate,
+          persona: payload.persona ?? existing.persona,
+          analysis: analysis ?? existing.analysis,
+          transcript: payload.transcript ?? existing.transcript,
+          docUrl: payload.docUrl ?? existing.docUrl,
+          score: score ?? existing.score,
+          ...(keepManual
+            ? {}
+            : {
+                campaignId: resolved.campaignId,
+                leadId: resolved.leadId,
+                matchMethod: resolved.match,
+              }),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.meetings.id, existing.id));
+      return {
+        ok: true,
+        id: existing.id,
+        campaignId: keepManual ? existing.campaignId : resolved.campaignId,
+        created: false,
+      };
+    }
+
+    const rows = await this.db
+      .insert(schema.meetings)
+      .values({
+        organizationId: orgId,
+        sessionId: payload.sessionId,
+        title: payload.title ?? null,
+        clientCompany: payload.clientCompany ?? null,
+        aeName: payload.aeName ?? null,
+        clientContact: payload.clientContact ?? null,
+        clientEmail: payload.clientEmail ?? null,
+        meetingDate: payload.meetingDate ?? null,
+        persona: payload.persona ?? null,
+        analysis,
+        transcript: payload.transcript ?? null,
+        docUrl: payload.docUrl ?? null,
+        score,
+        campaignId: resolved.campaignId,
+        leadId: resolved.leadId,
+        matchMethod: resolved.match,
+      })
+      .returning();
+    return {
+      ok: true,
+      id: rows[0]!.id,
+      campaignId: resolved.campaignId,
+      created: true,
+    };
+  }
+
+  // Delete a meeting (e.g. a stale/test row that has no Drive counterpart).
+  async remove(orgId: string, id: string): Promise<{ id: string }> {
+    const scope = and(
+      tenantScope(orgId, schema.meetings),
+      eq(schema.meetings.id, id),
+    );
+    const existing = (
+      await this.db
+        .select({ id: schema.meetings.id })
+        .from(schema.meetings)
+        .where(scope)
+        .limit(1)
+    )[0];
+    if (!existing) throw new NotFoundException('Meeting not found');
+    await this.db.delete(schema.meetings).where(scope);
+    return { id };
+  }
+
+  // The org these pushed meetings belong to. Single-tenant deploy: a pinned
+  // SALES_INGEST_ORG_ID, else the sole organization.
+  private async resolveOrgId(): Promise<string> {
+    const pinned = (this.config.get('SALES_INGEST_ORG_ID') ?? '').trim();
+    if (pinned) return pinned;
+    const orgs = await this.db
+      .select({ id: schema.organizations.id })
+      .from(schema.organizations)
+      .limit(2);
+    if (orgs.length === 1) return orgs[0]!.id;
+    throw new ServiceUnavailableException(
+      'Cannot determine the organization for ingest — set SALES_INGEST_ORG_ID.',
+    );
   }
 
   // Pull recent Sales-Agent executions from n8n, extract each meeting, resolve

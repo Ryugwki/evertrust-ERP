@@ -54,3 +54,13 @@ export function useAnalyzeMeeting() {
       void qc.invalidateQueries({ queryKey: queryKeys.meetings.all }),
   });
 }
+
+// Delete a meeting (e.g. a stale/test row that has no Drive counterpart).
+export function useDeleteMeeting() {
+  const qc = useQueryClient();
+  return useMutation<{ id: string }, ApiError, string>({
+    mutationFn: (id) => api.meetings.remove(id),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: queryKeys.meetings.all }),
+  });
+}

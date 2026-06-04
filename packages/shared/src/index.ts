@@ -674,6 +674,32 @@ export const AnalyzeMeetingDto = z.object({
 });
 export type AnalyzeMeetingDto = z.infer<typeof AnalyzeMeetingDto>;
 
+// POST /sales/meetings/ingest — n8n pushes a completed analysis (after it writes
+// the Drive Doc + sheet row) so the ERP mirrors the Drive folder in real time.
+// Token-guarded (x-arsenal-token), not JWT. Upserted by sessionId.
+export const IngestMeetingDto = z.object({
+  sessionId: z.string().trim().min(1),
+  title: z.string().nullish(),
+  clientCompany: z.string().nullish(),
+  aeName: z.string().nullish(),
+  clientContact: z.string().nullish(),
+  clientEmail: z.string().nullish(),
+  meetingDate: z.string().nullish(),
+  persona: z.string().nullish(),
+  analysis: z.unknown().optional(),
+  transcript: z.string().nullish(),
+  docUrl: z.string().nullish(),
+  score: z.number().nullish(),
+});
+export type IngestMeetingDto = z.infer<typeof IngestMeetingDto>;
+export const IngestMeetingResultDto = z.object({
+  ok: z.boolean(),
+  id: z.string(),
+  campaignId: z.string().nullable(),
+  created: z.boolean(),
+});
+export type IngestMeetingResultDto = z.infer<typeof IngestMeetingResultDto>;
+
 // ---- Tender assignment (manual L5-PIC assign) ----
 // Body for POST /tenders/:id/assign. reason is optional context (<= 500 chars).
 export const AssignTenderDto = z.object({

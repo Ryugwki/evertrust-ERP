@@ -9,10 +9,12 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import type { MeetingDto } from '@evertrust/shared';
 import {
   useAnalyzeMeeting,
+  useDeleteMeeting,
   useLinkMeeting,
   useMeetings,
   useSyncMeetings,
@@ -362,6 +364,7 @@ export function SalesView() {
                   setLinkValue={setLinkValue}
                   onLink={doLink}
                   linking={link.isPending}
+                  onDeleted={() => setSelectedId(null)}
                 />
               )}
             </CardContent>
@@ -381,6 +384,7 @@ function MeetingDetail({
   setLinkValue,
   onLink,
   linking,
+  onDeleted,
 }: {
   m: MeetingDto;
   campList: { id: string; name?: string | null; project?: string | null }[];
@@ -390,6 +394,7 @@ function MeetingDetail({
   setLinkValue: (v: string) => void;
   onLink: (m: MeetingDto, campaignId: string | null) => void;
   linking: boolean;
+  onDeleted: () => void;
 }) {
   const a = (m.analysis ?? null) as Analysis | null;
   const showPicker = !m.campaignId || changing;
@@ -398,6 +403,8 @@ function MeetingDetail({
   const personaList = personas.data?.personas ?? [];
   const folderUrl = personas.data?.folderUrl ?? null;
   const analyze = useAnalyzeMeeting();
+  const del = useDeleteMeeting();
+  const [confirmDel, setConfirmDel] = useState(false);
   const [personaSel, setPersonaSel] = useState('');
   const personaName =
     personaSel ||
@@ -421,13 +428,45 @@ function MeetingDetail({
             {m.persona ? ` · ${m.persona}` : ''}
           </p>
         </div>
-        {m.docUrl ? (
-          <Button asChild variant="outline" size="sm">
-            <a href={m.docUrl} target="_blank" rel="noopener noreferrer">
-              Open doc <ExternalLink className="ml-1 size-3.5" />
-            </a>
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {m.docUrl ? (
+            <Button asChild variant="outline" size="sm">
+              <a href={m.docUrl} target="_blank" rel="noopener noreferrer">
+                Open doc <ExternalLink className="ml-1 size-3.5" />
+              </a>
+            </Button>
+          ) : null}
+          <Can permission="campaigns:write">
+            <Button
+              variant={confirmDel ? 'destructive' : 'ghost'}
+              size="sm"
+              disabled={del.isPending}
+              onClick={() => {
+                if (!confirmDel) {
+                  setConfirmDel(true);
+                  return;
+                }
+                del.mutate(m.id, {
+                  onSuccess: () => {
+                    toast.success('Meeting deleted.');
+                    onDeleted();
+                  },
+                  onError: (e) =>
+                    toast.error(e.message ?? 'Could not delete meeting.'),
+                });
+              }}
+              onMouseLeave={() => setConfirmDel(false)}
+              title="Delete this meeting"
+            >
+              {del.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              {confirmDel ? 'Confirm delete' : 'Delete'}
+            </Button>
+          </Can>
+        </div>
       </div>
 
       {/* attribution */}

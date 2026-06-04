@@ -67,6 +67,9 @@ const COLUMN_TO_KEY: Record<string, string> = {
   supplier_id: 'supplierId',
   created_by: 'createdBy',
   drive_folder_id: 'driveFolderId',
+  session_id: 'sessionId',
+  lead_id: 'leadId',
+  match_method: 'matchMethod',
 };
 
 function rowMatches(row: Record<string, unknown>, cond: ParsedCondition): boolean {
