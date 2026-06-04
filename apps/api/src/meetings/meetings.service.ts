@@ -148,7 +148,7 @@ export class MeetingsService {
   async analyze(
     orgId: string,
     meetingId: string,
-    personaId: string,
+    persona: string,
   ): Promise<MeetingDto> {
     const scope = and(
       tenantScope(orgId, schema.meetings),
@@ -163,30 +163,17 @@ export class MeetingsService {
         'No transcript stored for this meeting — sync from n8n first.',
       );
     }
-    const persona = (
-      await this.db
-        .select()
-        .from(schema.personas)
-        .where(
-          and(
-            tenantScope(orgId, schema.personas),
-            eq(schema.personas.id, personaId),
-          ),
-        )
-        .limit(1)
-    )[0];
-    if (!persona) throw new NotFoundException('Persona not found');
 
     // Run the analysis on n8n. The workflow resolves the persona by name against
     // the Drive "AI Personas" folder and runs GPT-5-mini, returning the Sales
     // Analysis Schema synchronously.
-    const data = await this.runWorkflowAnalysis(m.transcript, persona.name);
+    const data = await this.runWorkflowAnalysis(m.transcript, persona);
 
     const ov = data.performance_score?.overall?.score;
     const score = typeof ov === 'number' ? Math.round(ov) : null;
     const rows = await this.db
       .update(schema.meetings)
-      .set({ analysis: data, persona: persona.name, score, updatedAt: new Date() })
+      .set({ analysis: data, persona, score, updatedAt: new Date() })
       .where(scope)
       .returning();
     const camps = await this.db

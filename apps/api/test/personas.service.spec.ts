@@ -1,52 +1,60 @@
-import { NotFoundException } from '@nestjs/common';
-import { schema } from '@evertrust/db';
+import { ServiceUnavailableException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import { PersonasService } from '../src/meetings/personas.service';
-import { FakeTable, makeFakeDb } from './fake-db';
 
-const ORG = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-
-function svc(seed: Record<string, unknown>[] = []) {
-  const personas = new FakeTable(seed);
-  const { db } = makeFakeDb(
-    new Map<unknown, FakeTable>([[schema.personas, personas]]),
-  );
-  return { service: new PersonasService(db), personas };
+function svc(apiUrl = 'https://n8n.test') {
+  const config = {
+    get: (k: string) => (k === 'N8N_API_URL' ? apiUrl : ''),
+  } as unknown as ConfigService;
+  return new PersonasService(config);
 }
 
 describe('PersonasService', () => {
-  it('auto-provisions a default Alex Hormozi persona when none exist', async () => {
-    const { service, personas } = svc();
-    const list = await service.list(ORG);
-    expect(list).toHaveLength(1);
-    expect(list[0]!.name).toBe('Alex Hormozi');
-    expect(list[0]!.systemPrompt.length).toBeGreaterThan(0);
-    expect(personas.rows).toHaveLength(1);
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
   });
 
-  it('creates and then deletes a persona', async () => {
-    const { service } = svc([
-      {
-        id: 'p1',
-        organizationId: ORG,
-        name: 'Alex Hormozi',
-        systemPrompt: 'x',
-        createdAt: new Date('2026-01-01T00:00:00Z'),
-        __seq: 1,
-      },
-    ]);
-    const created = await service.create(ORG, {
-      name: 'Challenger',
-      systemPrompt: 'Teach-Tailor-Take control.',
-    });
-    expect(created.name).toBe('Challenger');
-    const removed = await service.remove(ORG, created.id);
-    expect(removed.id).toBe(created.id);
+  it('lists Drive-folder personas (via n8n) with the folder URL', async () => {
+    const service = svc();
+    let calledUrl = '';
+    global.fetch = (async (url: string) => {
+      calledUrl = url;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          folderUrl: 'https://drive.google.com/drive/folders/abc',
+          personas: [
+            { id: 'f1', name: 'Alex Hormozi' },
+            { id: 'f2', name: 'Kanye West' },
+          ],
+        }),
+      };
+    }) as unknown as typeof fetch;
+
+    const r = await service.list();
+    expect(calledUrl).toBe('https://n8n.test/webhook/erp-sales-personas');
+    expect(r.folderUrl).toBe('https://drive.google.com/drive/folders/abc');
+    expect(r.personas.map((p) => p.name)).toEqual(['Alex Hormozi', 'Kanye West']);
   });
 
-  it('404s deleting an unknown persona', async () => {
-    const { service } = svc();
-    await expect(service.remove(ORG, 'nope')).rejects.toBeInstanceOf(
-      NotFoundException,
+  it('throws ServiceUnavailable when the workflow returns non-200', async () => {
+    const service = svc();
+    global.fetch = (async () => ({
+      ok: false,
+      status: 502,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    await expect(service.list()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+
+  it('throws ServiceUnavailable when N8N_API_URL is unset', async () => {
+    const service = svc('');
+    await expect(service.list()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
     );
   });
 });

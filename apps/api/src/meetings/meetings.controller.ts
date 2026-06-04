@@ -54,8 +54,8 @@ export class MeetingsController {
     return result;
   }
 
-  // Re-analyze a meeting's transcript under a chosen persona (ERP-native, via
-  // Claude). AUDITED.
+  // Re-analyze a meeting's transcript under a chosen persona by name (runs on
+  // the Sales Agent workflow: OpenAI GPT-5-mini + Drive persona). AUDITED.
   @RequirePermissions('campaigns:write')
   @Post(':id/analyze')
   async analyze(
@@ -64,7 +64,7 @@ export class MeetingsController {
     @Body() body: AnalyzeMeetingBodyDto,
     @Req() req: Request,
   ): Promise<MeetingDto> {
-    const m = await this.meetings.analyze(orgId, id, body.personaId);
+    const m = await this.meetings.analyze(orgId, id, body.persona);
     setAuditContext(req, {
       entity: 'meetings',
       entityId: id,

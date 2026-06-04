@@ -1,73 +1,83 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, eq } from 'drizzle-orm';
-import { schema } from '@evertrust/db';
-import type { CreatePersonaDto, PersonaDto } from '@evertrust/shared';
-import { DB, type DbClient } from '../db/db.tokens';
-import { tenantScope } from '../common/tenant';
 import {
-  DEFAULT_PERSONA_NAME,
-  DEFAULT_PERSONA_PROMPT,
-} from './meetings.analysis';
+  HttpException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { PersonaListDto } from '@evertrust/shared';
+
+// Coaching personas live as Google Docs in the Drive "AI Personas" folder. The
+// ERP has no Google creds, so it lists them through the Sales Agent workflow's
+// read-only entry (same host as N8N_API_URL).
+const PERSONAS_WEBHOOK_PATH = 'erp-sales-personas';
+const REQUEST_TIMEOUT_MS = 20000;
+
+interface RawPersona {
+  id?: string;
+  name?: string;
+}
 
 @Injectable()
 export class PersonasService {
-  constructor(@Inject(DB) private readonly db: DbClient) {}
+  private readonly logger = new Logger(PersonasService.name);
+  constructor(private readonly config: ConfigService) {}
 
-  // The org's coaching personas, oldest first. Auto-provisions the default
-  // "Alex Hormozi" persona the first time the org has none.
-  async list(orgId: string): Promise<PersonaDto[]> {
-    const rows = await this.db
-      .select()
-      .from(schema.personas)
-      .where(tenantScope(orgId, schema.personas))
-      .orderBy(asc(schema.personas.createdAt));
-    if (rows.length === 0) {
-      const created = await this.db
-        .insert(schema.personas)
-        .values({
-          organizationId: orgId,
-          name: DEFAULT_PERSONA_NAME,
-          systemPrompt: DEFAULT_PERSONA_PROMPT,
-        })
-        .returning();
-      return created.map((r) => this.toDto(r));
+  // The Drive folder's persona docs (name + Drive file id) plus the folder URL
+  // (for the "open folder" button). Refresh = re-call this.
+  async list(): Promise<PersonaListDto> {
+    const url = this.webhookUrl();
+    if (!url) {
+      throw new ServiceUnavailableException(
+        'Persona source is not configured (set N8N_API_URL).',
+      );
     }
-    return rows.map((r) => this.toDto(r));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new ServiceUnavailableException(
+          `Persona list returned HTTP ${res.status}.`,
+        );
+      }
+      const json = (await res.json()) as {
+        folderUrl?: unknown;
+        personas?: RawPersona[];
+      };
+      const personas = Array.isArray(json?.personas)
+        ? json.personas
+            .filter((p) => p && typeof p.name === 'string' && p.name.length > 0)
+            .map((p) => ({ id: String(p.id ?? p.name), name: String(p.name) }))
+        : [];
+      return {
+        folderUrl: typeof json?.folderUrl === 'string' ? json.folderUrl : null,
+        personas,
+      };
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      this.logger.warn(
+        `personas GET ${url} failed: ${err instanceof Error ? err.message : 'error'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Persona list call failed — check that the Sales Agent workflow is active.',
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  async create(orgId: string, dto: CreatePersonaDto): Promise<PersonaDto> {
-    const rows = await this.db
-      .insert(schema.personas)
-      .values({
-        organizationId: orgId,
-        name: dto.name,
-        systemPrompt: dto.systemPrompt,
-      })
-      .returning();
-    return this.toDto(rows[0]!);
-  }
-
-  async remove(orgId: string, id: string): Promise<{ id: string }> {
-    const scope = and(
-      tenantScope(orgId, schema.personas),
-      eq(schema.personas.id, id),
-    );
-    const existing = await this.db
-      .select({ id: schema.personas.id })
-      .from(schema.personas)
-      .where(scope)
-      .limit(1);
-    if (!existing[0]) throw new NotFoundException('Persona not found');
-    await this.db.delete(schema.personas).where(scope);
-    return { id };
-  }
-
-  private toDto(r: typeof schema.personas.$inferSelect): PersonaDto {
-    return {
-      id: r.id,
-      name: r.name,
-      systemPrompt: r.systemPrompt,
-      createdAt: new Date(r.createdAt).toISOString(),
-    };
+  private webhookUrl(): string {
+    const explicit = (
+      this.config.get('N8N_SALES_PERSONAS_WEBHOOK_URL') ?? ''
+    ).trim();
+    if (explicit) return explicit;
+    const base = (this.config.get('N8N_API_URL') ?? '')
+      .trim()
+      .replace(/\/+$/, '');
+    return base ? `${base}/webhook/${PERSONAS_WEBHOOK_PATH}` : '';
   }
 }

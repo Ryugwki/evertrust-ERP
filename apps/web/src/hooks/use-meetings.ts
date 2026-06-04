@@ -44,11 +44,12 @@ export function useLinkMeeting() {
   });
 }
 
-// Re-analyze a meeting under a chosen persona (ERP-native, via Claude).
+// Re-analyze a meeting under a chosen persona (runs on the n8n Sales Agent
+// workflow: OpenAI GPT-5-mini + the Drive persona of that name).
 export function useAnalyzeMeeting() {
   const qc = useQueryClient();
-  return useMutation<MeetingDto, ApiError, { id: string; personaId: string }>({
-    mutationFn: ({ id, personaId }) => api.meetings.analyze(id, personaId),
+  return useMutation<MeetingDto, ApiError, { id: string; persona: string }>({
+    mutationFn: ({ id, persona }) => api.meetings.analyze(id, persona),
     onSuccess: () =>
       void qc.invalidateQueries({ queryKey: queryKeys.meetings.all }),
   });

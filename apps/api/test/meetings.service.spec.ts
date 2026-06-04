@@ -1,5 +1,5 @@
 import type { ConfigService } from '@nestjs/config';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { schema } from '@evertrust/db';
 import { MeetingsService } from '../src/meetings/meetings.service';
 import { FakeTable, makeFakeDb } from './fake-db';
@@ -133,18 +133,25 @@ describe('MeetingsService.analyze', () => {
       };
     }) as unknown as typeof fetch;
 
-    const m = await service.analyze(ORG, 'm1', 'p1');
+    const m = await service.analyze(ORG, 'm1', 'Kanye West');
     expect(postedTo).toBe('https://n8n.test/webhook/erp-sales-analyze');
-    expect(body).toMatchObject({ persona: 'Alex Hormozi' });
-    expect(m.persona).toBe('Alex Hormozi');
+    expect(body).toMatchObject({ persona: 'Kanye West' });
+    expect(m.persona).toBe('Kanye West');
     expect(m.score).toBe(80);
     expect(m.hasTranscript).toBe(true);
   });
 
-  it('404s for an unknown persona', async () => {
+  it('rejects when the meeting has no stored transcript', async () => {
     const { service } = svc();
-    await expect(service.analyze(ORG, 'm1', 'nope')).rejects.toBeInstanceOf(
-      NotFoundException,
+    await expect(service.analyze(ORG, 'm2', 'Alex Hormozi')).rejects.toBeInstanceOf(
+      BadRequestException,
     );
+  });
+
+  it('404s for an unknown meeting', async () => {
+    const { service } = svc();
+    await expect(
+      service.analyze(ORG, 'nope', 'Alex Hormozi'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

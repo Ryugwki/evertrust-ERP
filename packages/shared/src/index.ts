@@ -654,25 +654,23 @@ export const MeetingSyncResultDto = z.object({
 });
 export type MeetingSyncResultDto = z.infer<typeof MeetingSyncResultDto>;
 
-// Coaching personas (the lens analysis runs through). ERP-managed.
+// Coaching personas — Google Docs in the Drive "AI Personas" folder, listed via
+// the Sales Agent workflow (id = Drive file id). The chosen name drives analysis.
 export const PersonaDto = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   name: z.string(),
-  systemPrompt: z.string(),
-  createdAt: z.string(),
 });
 export type PersonaDto = z.infer<typeof PersonaDto>;
-export const PersonaListDto = z.array(PersonaDto);
-
-export const CreatePersonaDto = z.object({
-  name: z.string().trim().min(1).max(120),
-  systemPrompt: z.string().trim().min(1).max(20000),
+export const PersonaListDto = z.object({
+  folderUrl: z.string().nullable(),
+  personas: z.array(PersonaDto),
 });
-export type CreatePersonaDto = z.infer<typeof CreatePersonaDto>;
+export type PersonaListDto = z.infer<typeof PersonaListDto>;
 
-// POST /sales/meetings/:id/analyze — run the coaching under a chosen persona.
+// POST /sales/meetings/:id/analyze — run the coaching under a chosen persona
+// (by name; the workflow resolves it against the Drive folder).
 export const AnalyzeMeetingDto = z.object({
-  personaId: z.string().uuid(),
+  persona: z.string().trim().min(1).max(120),
 });
 export type AnalyzeMeetingDto = z.infer<typeof AnalyzeMeetingDto>;
 
