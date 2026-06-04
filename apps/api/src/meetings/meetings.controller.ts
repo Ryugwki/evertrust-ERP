@@ -3,57 +3,25 @@ import {
   Controller,
   Delete,
   Get,
-  HttpCode,
-  HttpStatus,
   Param,
   Patch,
   Post,
   Query,
   Req,
-  ServiceUnavailableException,
-  UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
-import type {
-  IngestMeetingResultDto,
-  MeetingDto,
-  MeetingSyncResultDto,
-} from '@evertrust/shared';
+import type { MeetingDto, MeetingSyncResultDto } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
-import { Public } from '../auth/decorators/public.decorator';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
 import { MeetingsService } from './meetings.service';
-import {
-  AnalyzeMeetingBodyDto,
-  IngestMeetingBodyDto,
-  LinkMeetingBodyDto,
-} from './meetings.dto';
+import { AnalyzeMeetingBodyDto, LinkMeetingBodyDto } from './meetings.dto';
 
 // Sales-Agent meetings (Read.ai analyses synced from n8n, campaign-attributed).
 // Read = campaigns:read; sync + manual link = campaigns:write. Tenant-scoped.
 @Controller('sales/meetings')
 export class MeetingsController {
-  constructor(
-    private readonly meetings: MeetingsService,
-    private readonly config: ConfigService,
-  ) {}
-
-  // n8n → ERP push of a completed analysis (after the workflow wrote the Drive
-  // Doc + sheet). Token-guarded (x-arsenal-token), NOT JWT. Upserts by sessionId
-  // so the ERP mirrors the Drive folder in real time.
-  @Public()
-  @Post('ingest')
-  @HttpCode(HttpStatus.OK)
-  ingest(
-    @Body() body: IngestMeetingBodyDto,
-    @Req() req: Request,
-  ): Promise<IngestMeetingResultDto> {
-    this.assertIngestToken(req);
-    return this.meetings.ingest(body);
-  }
+  constructor(private readonly meetings: MeetingsService) {}
 
   // Delete a meeting (e.g. a stale/test row with no Drive counterpart). AUDITED.
   @RequirePermissions('campaigns:write')
@@ -66,23 +34,6 @@ export class MeetingsController {
     const r = await this.meetings.remove(orgId, id);
     setAuditContext(req, { entity: 'meetings', entityId: id, action: 'DELETE' });
     return r;
-  }
-
-  // Constant-time check of the inbound ingest token (reuses ARSENAL_INGEST_TOKEN).
-  // Blank = ingest disabled (503) until an operator mints a secret.
-  private assertIngestToken(req: Request): void {
-    const expected = this.config.get('ARSENAL_INGEST_TOKEN');
-    if (!expected) {
-      throw new ServiceUnavailableException(
-        'Meeting ingest is not configured (set ARSENAL_INGEST_TOKEN).',
-      );
-    }
-    const provided = req.header('x-arsenal-token') ?? '';
-    const a = Buffer.from(provided);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      throw new UnauthorizedException('Invalid ingest token.');
-    }
   }
 
   @RequirePermissions('campaigns:read')

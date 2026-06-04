@@ -11,8 +11,6 @@ import { ConfigService } from '@nestjs/config';
 import { and, desc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
 import type {
-  IngestMeetingDto,
-  IngestMeetingResultDto,
   MeetingDto,
   MeetingMatchMethod,
   MeetingSyncResultDto,
@@ -91,17 +89,6 @@ export interface MeetingFilters {
   bucket?: string; // 'week' | 'month' | 'all'
 }
 
-interface LeadLite {
-  id: string;
-  email: string | null;
-  website: string | null;
-  campaignId: string | null;
-}
-interface Resolved {
-  campaignId: string | null;
-  leadId: string | null;
-  match: MeetingMatchMethod | null;
-}
 
 @Injectable()
 export class MeetingsService {
@@ -295,113 +282,6 @@ export class MeetingsService {
     }
   }
 
-  // n8n push: a completed analysis (after the workflow wrote the Drive Doc +
-  // sheet row). Resolves the org, attributes the campaign by prospect email, and
-  // upserts by (org, sessionId) — so the ERP mirrors the Drive folder in real
-  // time. Partial payloads never erase stored data (transcript etc. preserved).
-  async ingest(payload: IngestMeetingDto): Promise<IngestMeetingResultDto> {
-    const orgId = await this.resolveOrgId();
-    const leadRows: LeadLite[] = await this.db
-      .select({
-        id: schema.leads.id,
-        email: schema.leads.email,
-        website: schema.leads.website,
-        campaignId: schema.leads.campaignId,
-      })
-      .from(schema.leads)
-      .where(tenantScope(orgId, schema.leads));
-    const resolved = this.resolve(payload.clientEmail ?? null, leadRows);
-
-    const analysis =
-      payload.analysis && typeof payload.analysis === 'object'
-        ? (payload.analysis as Record<string, unknown>)
-        : null;
-    const ov = (
-      analysis as { performance_score?: { overall?: { score?: unknown } } } | null
-    )?.performance_score?.overall?.score;
-    const score =
-      typeof payload.score === 'number'
-        ? Math.round(payload.score)
-        : typeof ov === 'number'
-          ? Math.round(ov)
-          : null;
-
-    const existing = (
-      await this.db
-        .select()
-        .from(schema.meetings)
-        .where(
-          and(
-            tenantScope(orgId, schema.meetings),
-            eq(schema.meetings.sessionId, payload.sessionId),
-          ),
-        )
-        .limit(1)
-    )[0];
-
-    if (existing) {
-      const keepManual = existing.matchMethod === 'manual';
-      await this.db
-        .update(schema.meetings)
-        .set({
-          title: payload.title ?? existing.title,
-          clientCompany: payload.clientCompany ?? existing.clientCompany,
-          aeName: payload.aeName ?? existing.aeName,
-          clientContact: payload.clientContact ?? existing.clientContact,
-          clientEmail: payload.clientEmail ?? existing.clientEmail,
-          meetingDate: payload.meetingDate ?? existing.meetingDate,
-          persona: payload.persona ?? existing.persona,
-          analysis: analysis ?? existing.analysis,
-          transcript: payload.transcript ?? existing.transcript,
-          docUrl: payload.docUrl ?? existing.docUrl,
-          score: score ?? existing.score,
-          ...(keepManual
-            ? {}
-            : {
-                campaignId: resolved.campaignId,
-                leadId: resolved.leadId,
-                matchMethod: resolved.match,
-              }),
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.meetings.id, existing.id));
-      return {
-        ok: true,
-        id: existing.id,
-        campaignId: keepManual ? existing.campaignId : resolved.campaignId,
-        created: false,
-      };
-    }
-
-    const rows = await this.db
-      .insert(schema.meetings)
-      .values({
-        organizationId: orgId,
-        sessionId: payload.sessionId,
-        title: payload.title ?? null,
-        clientCompany: payload.clientCompany ?? null,
-        aeName: payload.aeName ?? null,
-        clientContact: payload.clientContact ?? null,
-        clientEmail: payload.clientEmail ?? null,
-        meetingDate: payload.meetingDate ?? null,
-        persona: payload.persona ?? null,
-        analysis,
-        transcript: payload.transcript ?? null,
-        docUrl: payload.docUrl ?? null,
-        score,
-        campaignId: resolved.campaignId,
-        leadId: resolved.leadId,
-        matchMethod: resolved.match,
-      })
-      .returning();
-    return {
-      ok: true,
-      id: rows[0]!.id,
-      campaignId: resolved.campaignId,
-      created: true,
-    };
-  }
-
   // Delete a meeting (e.g. a stale/test row that has no Drive counterpart).
   async remove(orgId: string, id: string): Promise<{ id: string }> {
     const scope = and(
@@ -418,21 +298,6 @@ export class MeetingsService {
     if (!existing) throw new NotFoundException('Meeting not found');
     await this.db.delete(schema.meetings).where(scope);
     return { id };
-  }
-
-  // The org these pushed meetings belong to. Single-tenant deploy: a pinned
-  // SALES_INGEST_ORG_ID, else the sole organization.
-  private async resolveOrgId(): Promise<string> {
-    const pinned = (this.config.get('SALES_INGEST_ORG_ID') ?? '').trim();
-    if (pinned) return pinned;
-    const orgs = await this.db
-      .select({ id: schema.organizations.id })
-      .from(schema.organizations)
-      .limit(2);
-    if (orgs.length === 1) return orgs[0]!.id;
-    throw new ServiceUnavailableException(
-      'Cannot determine the organization for ingest — set SALES_INGEST_ORG_ID.',
-    );
   }
 
   // "Sync from Drive": mirror the analysis-report Docs in the Drive folder.
@@ -550,38 +415,6 @@ export class MeetingsService {
       .trim()
       .replace(/\/+$/, '');
     return base ? `${base}/webhook/${DRIVE_MEETINGS_PATH}` : '';
-  }
-
-  // email → lead.campaignId (exact), else domain match, else unattributed.
-  private resolve(
-    email: string | null,
-    leads: LeadLite[],
-  ): Resolved {
-    if (!email) return { campaignId: null, leadId: null, match: null };
-    const e = email.toLowerCase();
-    const exact = leads.find((l) => (l.email ?? '').toLowerCase() === e);
-    if (exact?.campaignId) {
-      return { campaignId: exact.campaignId, leadId: exact.id, match: 'email' };
-    }
-    const domain = e.split('@')[1] ?? '';
-    if (domain) {
-      const byDomain = leads.find(
-        (l) =>
-          l.campaignId &&
-          (((l.email ?? '').split('@')[1] ?? '') === domain ||
-            (l.website ?? '').toLowerCase().includes(domain)),
-      );
-      if (byDomain) {
-        return {
-          campaignId: byDomain.campaignId,
-          leadId: byDomain.id,
-          match: 'domain',
-        };
-      }
-    }
-    // Found the person but their lead carries no campaign — link the lead only.
-    if (exact) return { campaignId: null, leadId: exact.id, match: 'email' };
-    return { campaignId: null, leadId: null, match: null };
   }
 
   private toDto(

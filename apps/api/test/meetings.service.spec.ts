@@ -58,26 +58,11 @@ function svc() {
       __seq: 1,
     },
   ]);
-  const organizations = new FakeTable([
-    { id: ORG, name: 'Evertrust', __seq: 1 },
-  ]);
-  const leads = new FakeTable([
-    {
-      id: 'l1',
-      organizationId: ORG,
-      email: 'vic@kodeca.de',
-      website: null,
-      campaignId: 'c1',
-      __seq: 1,
-    },
-  ]);
   const { db } = makeFakeDb(
     new Map<unknown, FakeTable>([
       [schema.meetings, meetings],
       [schema.campaigns, campaigns],
       [schema.personas, personas],
-      [schema.organizations, organizations],
-      [schema.leads, leads],
     ]),
   );
   const config = {
@@ -169,42 +154,6 @@ describe('MeetingsService.analyze', () => {
     await expect(
       service.analyze(ORG, 'nope', 'Alex Hormozi'),
     ).rejects.toBeInstanceOf(NotFoundException);
-  });
-});
-
-describe('MeetingsService.ingest (n8n push)', () => {
-  it('inserts a pushed meeting, attributes the campaign by email, scores it', async () => {
-    const { service, meetings } = svc();
-    const r = await service.ingest({
-      sessionId: 's-new',
-      clientCompany: 'Kodeca',
-      aeName: 'Hanna',
-      clientEmail: 'vic@kodeca.de',
-      persona: 'Alex Hormozi',
-      analysis: { performance_score: { overall: { score: 77 } } },
-      transcript: '[00:00] Hanna: hi\n[00:05] Vic: hello',
-      docUrl: 'https://docs.google.com/x',
-    });
-    expect(r.created).toBe(true);
-    expect(r.campaignId).toBe('c1');
-    const row = meetings.rows.find((m) => m.sessionId === 's-new')!;
-    expect(row.organizationId).toBe(ORG);
-    expect(row.score).toBe(77);
-    expect(row.matchMethod).toBe('email');
-  });
-
-  it('upserts by sessionId and never erases the transcript on a partial push', async () => {
-    const { service, meetings } = svc();
-    await service.ingest({
-      sessionId: 's-up',
-      clientCompany: 'Kodeca',
-      transcript: '[00:00] Hanna: hi\n[00:05] Vic: hello',
-    });
-    const r2 = await service.ingest({ sessionId: 's-up', score: 91 });
-    expect(r2.created).toBe(false);
-    const row = meetings.rows.find((m) => m.sessionId === 's-up')!;
-    expect(row.transcript).toBe('[00:00] Hanna: hi\n[00:05] Vic: hello');
-    expect(row.score).toBe(91);
   });
 });
 
