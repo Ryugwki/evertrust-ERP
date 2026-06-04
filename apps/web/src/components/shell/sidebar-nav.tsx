@@ -120,7 +120,7 @@ function CampaignMetric() {
   const live = (q.data ?? []).filter((c) => c.status === 'DEPLOYED').length;
   return (
     <SnapshotRow
-      href="/growth-engine"
+      href="/marketing"
       icon={Crosshair}
       label="Live campaigns"
       value={live}

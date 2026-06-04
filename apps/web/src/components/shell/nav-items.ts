@@ -1,6 +1,5 @@
 import {
   Contact,
-  Crosshair,
   Headset,
   LayoutDashboard,
   LineChart,
@@ -28,7 +27,6 @@ export type NavItem = {
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: null },
-  { href: '/growth-engine', label: 'Growth Engine', icon: Crosshair, permission: 'campaigns:read', group: 'Acquisition' },
   { href: '/marketing', label: 'Marketing', icon: LineChart, permission: 'campaigns:read', group: 'Acquisition' },
   { href: '/key-account', label: 'Key Account', icon: Contact, permission: 'campaigns:read', group: 'Acquisition' },
   { href: '/sales', label: 'Sales', icon: Headset, permission: 'campaigns:read', group: 'Acquisition' },
