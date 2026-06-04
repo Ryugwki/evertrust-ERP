@@ -2,7 +2,6 @@ import type { ConfigService } from '@nestjs/config';
 import { NotFoundException } from '@nestjs/common';
 import { schema } from '@evertrust/db';
 import { MeetingsService } from '../src/meetings/meetings.service';
-import type { ClaudeService } from '../src/ai/claude.service';
 import { FakeTable, makeFakeDb } from './fake-db';
 
 const ORG = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -65,18 +64,10 @@ function svc() {
       [schema.personas, personas],
     ]),
   );
-  const config = { get: () => '' } as unknown as ConfigService;
-  const claude = {
-    isConfigured: () => true,
-    structured: async () => ({
-      data: {
-        overall_summary: 'ok',
-        performance_score: { overall: { score: 80 } },
-      },
-      usage: {},
-    }),
-  } as unknown as ClaudeService;
-  return { service: new MeetingsService(db, config, claude), meetings };
+  const config = {
+    get: (k: string) => (k === 'N8N_API_URL' ? 'https://n8n.test' : ''),
+  } as unknown as ConfigService;
+  return { service: new MeetingsService(db, config), meetings };
 }
 
 describe('MeetingsService.list', () => {
@@ -120,9 +111,31 @@ describe('MeetingsService.link', () => {
 });
 
 describe('MeetingsService.analyze', () => {
-  it('runs the persona analysis (via Claude) and stores it', async () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  it('runs the persona analysis (via the n8n workflow) and stores it', async () => {
     const { service } = svc();
+    let postedTo = '';
+    let body: unknown = null;
+    global.fetch = (async (url: string, init: { body: string }) => {
+      postedTo = url;
+      body = JSON.parse(init.body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          overall_summary: 'ok',
+          performance_score: { overall: { score: 80 } },
+        }),
+      };
+    }) as unknown as typeof fetch;
+
     const m = await service.analyze(ORG, 'm1', 'p1');
+    expect(postedTo).toBe('https://n8n.test/webhook/erp-sales-analyze');
+    expect(body).toMatchObject({ persona: 'Alex Hormozi' });
     expect(m.persona).toBe('Alex Hormozi');
     expect(m.score).toBe(80);
     expect(m.hasTranscript).toBe(true);

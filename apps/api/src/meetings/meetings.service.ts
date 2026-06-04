@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Inject,
   Injectable,
   Logger,
@@ -16,18 +17,17 @@ import type {
 } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import { tenantScope } from '../common/tenant';
-import { ClaudeService } from '../ai/claude.service';
 import { extractMeeting, type RunData } from './meetings.extract';
-import {
-  ANALYSIS_JSON_SCHEMA,
-  AnalysisZ,
-  SCHEMA_INSTRUCTION,
-} from './meetings.analysis';
+import { AnalysisZ, type AnalysisResult } from './meetings.analysis';
 
 // The live Sales Agent workflow (Hormozi coach). Reused N8N_API_URL/KEY config.
 const SALES_AGENT_WORKFLOW_ID = 'sgQ2Nqa8MZgn0wdp';
 const SCAN_LIMIT = 40;
 const REQUEST_TIMEOUT_MS = 15000;
+// On-demand persona analysis runs through the Sales Agent workflow's ERP entry
+// (webhook → OpenAI GPT-5-mini → Drive persona). Same host as N8N_API_URL.
+const ANALYZE_WEBHOOK_PATH = 'erp-sales-analyze';
+const ANALYZE_TIMEOUT_MS = 120000;
 // Synced analyses are produced by the workflow's hardcoded coach.
 const WORKFLOW_PERSONA = 'Alex Hormozi';
 
@@ -60,7 +60,6 @@ export class MeetingsService {
   constructor(
     @Inject(DB) private readonly db: DbClient,
     private readonly config: ConfigService,
-    private readonly claude: ClaudeService,
   ) {}
 
   // The org's meetings, newest first, with the campaign name joined in JS and
@@ -142,9 +141,10 @@ export class MeetingsService {
     return this.toDto(row, new Map(camps.map((c) => [c.id, c.name])));
   }
 
-  // Re-analyze a meeting's transcript under a chosen ERP persona via Claude, and
-  // store the result. Needs a stored transcript (synced from n8n) + a configured
-  // Claude key.
+  // Re-analyze a meeting's transcript under a chosen persona by calling the
+  // EVERTRUST - SALES AGENT workflow (OpenAI GPT-5-mini + Drive personas), then
+  // store the result. No ERP-side LLM key — the workflow owns the model. Needs a
+  // stored transcript (synced from n8n).
   async analyze(
     orgId: string,
     meetingId: string,
@@ -176,21 +176,11 @@ export class MeetingsService {
         .limit(1)
     )[0];
     if (!persona) throw new NotFoundException('Persona not found');
-    if (!this.claude.isConfigured()) {
-      throw new ServiceUnavailableException(
-        'Claude is not configured (set ANTHROPIC_API_KEY).',
-      );
-    }
 
-    const { data } = await this.claude.structured({
-      system: `${persona.systemPrompt}\n\n${SCHEMA_INSTRUCTION}`,
-      prompt: m.transcript,
-      toolName: 'submit_sales_analysis',
-      toolDescription: 'Return the structured sales-call analysis.',
-      schema: AnalysisZ,
-      jsonSchema: ANALYSIS_JSON_SCHEMA,
-      maxTokens: 4096,
-    });
+    // Run the analysis on n8n. The workflow resolves the persona by name against
+    // the Drive "AI Personas" folder and runs GPT-5-mini, returning the Sales
+    // Analysis Schema synchronously.
+    const data = await this.runWorkflowAnalysis(m.transcript, persona.name);
 
     const ov = data.performance_score?.overall?.score;
     const score = typeof ov === 'number' ? Math.round(ov) : null;
@@ -204,6 +194,69 @@ export class MeetingsService {
       .from(schema.campaigns)
       .where(tenantScope(orgId, schema.campaigns));
     return this.toDto(rows[0]!, new Map(camps.map((c) => [c.id, c.name])));
+  }
+
+  // The ERP entry to the Sales Agent workflow. Same host as N8N_API_URL (the n8n
+  // Cloud instance), or an explicit override via N8N_SALES_ANALYZE_WEBHOOK_URL.
+  private analyzeWebhookUrl(): string {
+    const explicit = (
+      this.config.get('N8N_SALES_ANALYZE_WEBHOOK_URL') ?? ''
+    ).trim();
+    if (explicit) return explicit;
+    const base = (this.config.get('N8N_API_URL') ?? '')
+      .trim()
+      .replace(/\/+$/, '');
+    return base ? `${base}/webhook/${ANALYZE_WEBHOOK_PATH}` : '';
+  }
+
+  // POST {transcript, persona} to the workflow and validate the returned Sales
+  // Analysis Schema. Surfaces a clear, observable error on any failure.
+  private async runWorkflowAnalysis(
+    transcript: string,
+    persona: string,
+  ): Promise<AnalysisResult> {
+    const url = this.analyzeWebhookUrl();
+    if (!url) {
+      throw new ServiceUnavailableException(
+        'Sales analysis is not configured (set N8N_API_URL).',
+      );
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({ transcript, persona }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new ServiceUnavailableException(
+          `Sales Agent workflow returned HTTP ${res.status}.`,
+        );
+      }
+      const json = (await res.json()) as unknown;
+      const parsed = AnalysisZ.safeParse(json);
+      if (!parsed.success) {
+        throw new ServiceUnavailableException(
+          'Sales Agent workflow returned an unexpected analysis shape.',
+        );
+      }
+      return parsed.data;
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      this.logger.warn(
+        `analyze POST ${url} failed: ${err instanceof Error ? err.message : 'error'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Sales Agent workflow call failed — check that the workflow is active.',
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   // Pull recent Sales-Agent executions from n8n, extract each meeting, resolve
