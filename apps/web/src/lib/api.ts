@@ -8,6 +8,10 @@ import {
   MeetingListDto,
   MeetingSyncResultDto,
   LinkMeetingDto,
+  AnalyzeMeetingDto,
+  PersonaDto,
+  PersonaListDto,
+  CreatePersonaDto,
   ApprovalRequestDto,
   ArsenalBackfillResultDto,
   ArsenalExecutionsDto,
@@ -577,6 +581,33 @@ export const api = {
         method: 'PATCH',
         body: LinkMeetingDto.parse({ campaignId }),
         schema: MeetingDto,
+      }),
+
+    analyze: (id: string, personaId: string) =>
+      request<MeetingDto>(`/sales/meetings/${id}/analyze`, {
+        method: 'POST',
+        body: AnalyzeMeetingDto.parse({ personaId }),
+        schema: MeetingDto,
+      }),
+  },
+
+  // ---- Sales Agent: coaching personas (ERP-managed) ----
+  personas: {
+    list: (signal?: AbortSignal) =>
+      request<PersonaDto[]>('/sales/personas', {
+        schema: PersonaListDto,
+        signal,
+      }),
+    create: (input: z.infer<typeof CreatePersonaDto>) =>
+      request<PersonaDto>('/sales/personas', {
+        method: 'POST',
+        body: CreatePersonaDto.parse(input),
+        schema: PersonaDto,
+      }),
+    remove: (id: string) =>
+      request<{ id: string }>(`/sales/personas/${id}`, {
+        method: 'DELETE',
+        schema: z.object({ id: z.string() }),
       }),
   },
 

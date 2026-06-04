@@ -2,6 +2,7 @@ import type { ConfigService } from '@nestjs/config';
 import { NotFoundException } from '@nestjs/common';
 import { schema } from '@evertrust/db';
 import { MeetingsService } from '../src/meetings/meetings.service';
+import type { ClaudeService } from '../src/ai/claude.service';
 import { FakeTable, makeFakeDb } from './fake-db';
 
 const ORG = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -21,6 +22,7 @@ function svc() {
       campaignId: 'c1',
       matchMethod: 'email',
       analysis: { overall_summary: 'x' },
+      transcript: '[00:00] Hanna: hello\n[00:05] Vic: hi',
       meetingDate: '2026-06-03',
       createdAt: new Date('2026-06-03T00:00:00Z'),
       __seq: 2,
@@ -46,14 +48,35 @@ function svc() {
   const campaigns = new FakeTable([
     { id: 'c1', organizationId: ORG, name: 'LED Retrofit Berlin 2026' },
   ]);
+  const personas = new FakeTable([
+    {
+      id: 'p1',
+      organizationId: ORG,
+      name: 'Alex Hormozi',
+      systemPrompt: 'Coach.',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      __seq: 1,
+    },
+  ]);
   const { db } = makeFakeDb(
     new Map<unknown, FakeTable>([
       [schema.meetings, meetings],
       [schema.campaigns, campaigns],
+      [schema.personas, personas],
     ]),
   );
   const config = { get: () => '' } as unknown as ConfigService;
-  return { service: new MeetingsService(db, config), meetings };
+  const claude = {
+    isConfigured: () => true,
+    structured: async () => ({
+      data: {
+        overall_summary: 'ok',
+        performance_score: { overall: { score: 80 } },
+      },
+      usage: {},
+    }),
+  } as unknown as ClaudeService;
+  return { service: new MeetingsService(db, config, claude), meetings };
 }
 
 describe('MeetingsService.list', () => {
@@ -91,6 +114,23 @@ describe('MeetingsService.link', () => {
   it('404s for an unknown meeting', async () => {
     const { service } = svc();
     await expect(service.link(ORG, 'nope', 'c1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});
+
+describe('MeetingsService.analyze', () => {
+  it('runs the persona analysis (via Claude) and stores it', async () => {
+    const { service } = svc();
+    const m = await service.analyze(ORG, 'm1', 'p1');
+    expect(m.persona).toBe('Alex Hormozi');
+    expect(m.score).toBe(80);
+    expect(m.hasTranscript).toBe(true);
+  });
+
+  it('404s for an unknown persona', async () => {
+    const { service } = svc();
+    await expect(service.analyze(ORG, 'm1', 'nope')).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });

@@ -10,3 +10,4 @@ export * from './observability';
 export * from './campaigns';
 export * from './leads';
 export * from './meetings';
+export * from './personas';

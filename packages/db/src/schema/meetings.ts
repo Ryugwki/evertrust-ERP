@@ -34,6 +34,8 @@ export const meetings = pgTable(
     meetingDate: text('meeting_date'),
     persona: text('persona'),
     analysis: jsonb('analysis'),
+    // Raw transcript (kept so the ERP can re-analyze under a chosen persona).
+    transcript: text('transcript'),
     docUrl: text('doc_url'),
     score: integer('score'),
     // Campaign attribution (email → lead → campaign). Nullable = Unattributed.

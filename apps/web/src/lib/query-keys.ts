@@ -87,6 +87,12 @@ export const queryKeys = {
       ] as const,
   },
 
+  // Sales Agent: coaching personas (ERP-managed).
+  personas: {
+    all: ['personas'] as const,
+    list: () => ['personas', 'list'] as const,
+  },
+
   // Key Account: hot-lead CRM.
   leads: {
     all: ['leads'] as const,

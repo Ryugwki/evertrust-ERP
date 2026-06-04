@@ -14,7 +14,7 @@ import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
 import { MeetingsService } from './meetings.service';
-import { LinkMeetingBodyDto } from './meetings.dto';
+import { AnalyzeMeetingBodyDto, LinkMeetingBodyDto } from './meetings.dto';
 
 // Sales-Agent meetings (Read.ai analyses synced from n8n, campaign-attributed).
 // Read = campaigns:read; sync + manual link = campaigns:write. Tenant-scoped.
@@ -52,6 +52,26 @@ export class MeetingsController {
     const result = await this.meetings.sync(orgId);
     setAuditContext(req, { entity: 'meetings', action: 'SYNC', after: result });
     return result;
+  }
+
+  // Re-analyze a meeting's transcript under a chosen persona (ERP-native, via
+  // Claude). AUDITED.
+  @RequirePermissions('campaigns:write')
+  @Post(':id/analyze')
+  async analyze(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() body: AnalyzeMeetingBodyDto,
+    @Req() req: Request,
+  ): Promise<MeetingDto> {
+    const m = await this.meetings.analyze(orgId, id, body.personaId);
+    setAuditContext(req, {
+      entity: 'meetings',
+      entityId: id,
+      action: 'ANALYZE',
+      after: { persona: m.persona, score: m.score },
+    });
+    return m;
   }
 
   // Manually link a meeting to a campaign (or clear it). AUDITED.

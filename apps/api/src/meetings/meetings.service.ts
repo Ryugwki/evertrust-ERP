@@ -1,6 +1,13 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
 import type {
   MeetingDto,
@@ -9,7 +16,13 @@ import type {
 } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import { tenantScope } from '../common/tenant';
+import { ClaudeService } from '../ai/claude.service';
 import { extractMeeting, type RunData } from './meetings.extract';
+import {
+  ANALYSIS_JSON_SCHEMA,
+  AnalysisZ,
+  SCHEMA_INSTRUCTION,
+} from './meetings.analysis';
 
 // The live Sales Agent workflow (Hormozi coach). Reused N8N_API_URL/KEY config.
 const SALES_AGENT_WORKFLOW_ID = 'sgQ2Nqa8MZgn0wdp';
@@ -47,6 +60,7 @@ export class MeetingsService {
   constructor(
     @Inject(DB) private readonly db: DbClient,
     private readonly config: ConfigService,
+    private readonly claude: ClaudeService,
   ) {}
 
   // The org's meetings, newest first, with the campaign name joined in JS and
@@ -128,6 +142,70 @@ export class MeetingsService {
     return this.toDto(row, new Map(camps.map((c) => [c.id, c.name])));
   }
 
+  // Re-analyze a meeting's transcript under a chosen ERP persona via Claude, and
+  // store the result. Needs a stored transcript (synced from n8n) + a configured
+  // Claude key.
+  async analyze(
+    orgId: string,
+    meetingId: string,
+    personaId: string,
+  ): Promise<MeetingDto> {
+    const scope = and(
+      tenantScope(orgId, schema.meetings),
+      eq(schema.meetings.id, meetingId),
+    );
+    const m = (
+      await this.db.select().from(schema.meetings).where(scope).limit(1)
+    )[0];
+    if (!m) throw new NotFoundException('Meeting not found');
+    if (!m.transcript) {
+      throw new BadRequestException(
+        'No transcript stored for this meeting — sync from n8n first.',
+      );
+    }
+    const persona = (
+      await this.db
+        .select()
+        .from(schema.personas)
+        .where(
+          and(
+            tenantScope(orgId, schema.personas),
+            eq(schema.personas.id, personaId),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (!persona) throw new NotFoundException('Persona not found');
+    if (!this.claude.isConfigured()) {
+      throw new ServiceUnavailableException(
+        'Claude is not configured (set ANTHROPIC_API_KEY).',
+      );
+    }
+
+    const { data } = await this.claude.structured({
+      system: `${persona.systemPrompt}\n\n${SCHEMA_INSTRUCTION}`,
+      prompt: m.transcript,
+      toolName: 'submit_sales_analysis',
+      toolDescription: 'Return the structured sales-call analysis.',
+      schema: AnalysisZ,
+      jsonSchema: ANALYSIS_JSON_SCHEMA,
+      maxTokens: 4096,
+    });
+
+    const ov = data.performance_score?.overall?.score;
+    const score = typeof ov === 'number' ? Math.round(ov) : null;
+    const rows = await this.db
+      .update(schema.meetings)
+      .set({ analysis: data, persona: persona.name, score, updatedAt: new Date() })
+      .where(scope)
+      .returning();
+    const camps = await this.db
+      .select({ id: schema.campaigns.id, name: schema.campaigns.name })
+      .from(schema.campaigns)
+      .where(tenantScope(orgId, schema.campaigns));
+    return this.toDto(rows[0]!, new Map(camps.map((c) => [c.id, c.name])));
+  }
+
   // Pull recent Sales-Agent executions from n8n, extract each meeting, resolve
   // its campaign (email → lead → campaignId), and upsert by (org, sessionId).
   async sync(orgId: string): Promise<MeetingSyncResultDto> {
@@ -183,6 +261,7 @@ export class MeetingsService {
         meetingDate: m.meetingDate,
         persona: WORKFLOW_PERSONA,
         analysis: m.analysis,
+        transcript: m.transcript,
         docUrl: m.docUrl,
         score: m.score,
       };
@@ -266,6 +345,7 @@ export class MeetingsService {
       meetingDate: r.meetingDate,
       persona: r.persona,
       analysis: r.analysis ?? null,
+      hasTranscript: Boolean(r.transcript),
       docUrl: r.docUrl,
       score: r.score,
       campaignId: r.campaignId,

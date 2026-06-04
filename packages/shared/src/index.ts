@@ -627,6 +627,7 @@ export const MeetingDto = z.object({
   meetingDate: z.string().nullable(),
   persona: z.string().nullable(),
   analysis: z.unknown().nullable(),
+  hasTranscript: z.boolean(),
   docUrl: z.string().nullable(),
   score: z.number().nullable(),
   campaignId: z.string().uuid().nullable(),
@@ -652,6 +653,28 @@ export const MeetingSyncResultDto = z.object({
   attributed: z.number(),
 });
 export type MeetingSyncResultDto = z.infer<typeof MeetingSyncResultDto>;
+
+// Coaching personas (the lens analysis runs through). ERP-managed.
+export const PersonaDto = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  systemPrompt: z.string(),
+  createdAt: z.string(),
+});
+export type PersonaDto = z.infer<typeof PersonaDto>;
+export const PersonaListDto = z.array(PersonaDto);
+
+export const CreatePersonaDto = z.object({
+  name: z.string().trim().min(1).max(120),
+  systemPrompt: z.string().trim().min(1).max(20000),
+});
+export type CreatePersonaDto = z.infer<typeof CreatePersonaDto>;
+
+// POST /sales/meetings/:id/analyze — run the coaching under a chosen persona.
+export const AnalyzeMeetingDto = z.object({
+  personaId: z.string().uuid(),
+});
+export type AnalyzeMeetingDto = z.infer<typeof AnalyzeMeetingDto>;
 
 // ---- Tender assignment (manual L5-PIC assign) ----
 // Body for POST /tenders/:id/assign. reason is optional context (<= 500 chars).

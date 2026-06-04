@@ -58,6 +58,32 @@ export function pickProspectEmail(
   return null;
 }
 
+// Rebuild the plaintext transcript from Read.ai speaker_blocks (mirrors the
+// workflow's "Adapt Transcript"): `[mm:ss] Name: words`, times relative to start.
+export function buildTranscript(
+  body: Record<string, unknown> | undefined,
+): string | null {
+  const t = get(body, 'transcript');
+  const blocks = get(t, 'speaker_blocks');
+  if (!Array.isArray(blocks) || blocks.length === 0) return null;
+  const start =
+    typeof get(blocks[0], 'start_time') === 'number'
+      ? (get(blocks[0], 'start_time') as number)
+      : 0;
+  const lines: string[] = [];
+  for (const b of blocks) {
+    const name = str(get(get(b, 'speaker'), 'name')) ?? 'Unknown';
+    const words = str(get(b, 'words')) ?? '';
+    const st = get(b, 'start_time');
+    const ms = typeof st === 'number' ? st : start;
+    const sec = Math.max(0, Math.floor((ms - start) / 1000));
+    const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+    const ss = String(sec % 60).padStart(2, '0');
+    lines.push(`[${mm}:${ss}] ${name}: ${words}`);
+  }
+  return lines.join('\n');
+}
+
 export interface ExtractedMeeting {
   sessionId: string | null;
   title: string | null;
@@ -69,6 +95,7 @@ export interface ExtractedMeeting {
   docUrl: string | null;
   score: number | null;
   analysis: Record<string, unknown> | null;
+  transcript: string | null;
 }
 
 export function extractMeeting(rd: RunData): ExtractedMeeting | null {
@@ -103,5 +130,6 @@ export function extractMeeting(rd: RunData): ExtractedMeeting | null {
     docUrl: str(get(doc, 'webViewLink')),
     score: intOrNull(get(overall, 'score')),
     analysis,
+    transcript: buildTranscript(body),
   };
 }

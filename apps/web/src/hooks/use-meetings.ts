@@ -43,3 +43,13 @@ export function useLinkMeeting() {
       void qc.invalidateQueries({ queryKey: queryKeys.meetings.all }),
   });
 }
+
+// Re-analyze a meeting under a chosen persona (ERP-native, via Claude).
+export function useAnalyzeMeeting() {
+  const qc = useQueryClient();
+  return useMutation<MeetingDto, ApiError, { id: string; personaId: string }>({
+    mutationFn: ({ id, personaId }) => api.meetings.analyze(id, personaId),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: queryKeys.meetings.all }),
+  });
+}

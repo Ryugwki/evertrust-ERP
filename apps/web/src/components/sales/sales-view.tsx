@@ -6,21 +6,41 @@ import {
   ChevronRight,
   ExternalLink,
   Loader2,
+  Plus,
   RefreshCw,
+  Settings2,
+  Sparkles,
+  Trash2,
 } from 'lucide-react';
 import type { MeetingDto } from '@evertrust/shared';
 import {
+  useAnalyzeMeeting,
   useLinkMeeting,
   useMeetings,
   useSyncMeetings,
 } from '@/hooks/use-meetings';
+import {
+  useCreatePersona,
+  useDeletePersona,
+  usePersonas,
+} from '@/hooks/use-personas';
 import { useCampaigns } from '@/hooks/use-campaigns';
 import { PageHeader } from '@/components/common/page-header';
 import { Can } from '@/components/auth/can';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -349,6 +369,7 @@ export function SalesView() {
                 </p>
               ) : (
                 <MeetingDetail
+                  key={selected.id}
                   m={selected}
                   campList={campList}
                   changing={changing}
@@ -388,6 +409,17 @@ function MeetingDetail({
 }) {
   const a = (m.analysis ?? null) as Analysis | null;
   const showPicker = !m.campaignId || changing;
+
+  const personas = usePersonas();
+  const personaList = personas.data ?? [];
+  const analyze = useAnalyzeMeeting();
+  const [personaSel, setPersonaSel] = useState('');
+  const [manage, setManage] = useState(false);
+  const personaId =
+    personaSel ||
+    personaList.find((p) => p.name === m.persona)?.id ||
+    personaList[0]?.id ||
+    '';
 
   return (
     <div className="flex flex-col gap-5">
@@ -493,6 +525,53 @@ function MeetingDetail({
         />
       </div>
 
+      {/* coaching: persona + analyze */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-3">
+        <span className="text-xs uppercase tracking-wider text-muted-foreground">
+          Persona
+        </span>
+        <Select value={personaId} onValueChange={setPersonaSel}>
+          <SelectTrigger className="h-8 w-[200px]">
+            <SelectValue
+              placeholder={personas.isLoading ? 'Loading…' : 'Choose a persona'}
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {personaList.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Can permission="campaigns:write">
+          <Button
+            size="sm"
+            disabled={!personaId || !m.hasTranscript || analyze.isPending}
+            onClick={() =>
+              analyze.mutate(
+                { id: m.id, personaId },
+                {
+                  onSuccess: () => toast.success('Analyzed ✓'),
+                  onError: (e) => toast.error(e.message ?? 'Analysis failed.'),
+                },
+              )
+            }
+          >
+            {analyze.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            {m.analysis ? 'Re-analyze' : 'Analyze'}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setManage(true)}>
+            <Settings2 className="size-3.5" /> Manage
+          </Button>
+        </Can>
+        {!m.hasTranscript ? (
+          <span className="text-xs text-muted-foreground">
+            No transcript stored — sync from n8n to enable analysis.
+          </span>
+        ) : null}
+      </div>
+
       {/* analysis */}
       {!a ? (
         <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -562,7 +641,103 @@ function MeetingDetail({
           ) : null}
         </>
       )}
+
+      <PersonaManager open={manage} onOpenChange={setManage} />
     </div>
+  );
+}
+
+function PersonaManager({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const personas = usePersonas();
+  const create = useCreatePersona();
+  const del = useDeletePersona();
+  const list = personas.data ?? [];
+  const [name, setName] = useState('');
+  const [prompt, setPrompt] = useState('');
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Coaching personas</DialogTitle>
+          <DialogDescription>
+            Each persona is the system prompt used to analyze a transcript.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
+          {list.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center gap-2 rounded-lg border p-2.5"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">{p.name}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {p.systemPrompt}
+                </div>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-muted-foreground hover:text-destructive"
+                disabled={del.isPending}
+                onClick={() =>
+                  del.mutate(p.id, {
+                    onError: (e) => toast.error(e.message ?? 'Could not delete.'),
+                  })
+                }
+              >
+                <Trash2 />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2 border-t pt-3">
+          <Label>Add a persona</Label>
+          <Input
+            placeholder="Name (e.g. Challenger)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Textarea
+            placeholder="System prompt — how this coach analyzes the call…"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="min-h-24"
+          />
+          <Button
+            size="sm"
+            className="self-start"
+            disabled={!name.trim() || !prompt.trim() || create.isPending}
+            onClick={() =>
+              create.mutate(
+                { name: name.trim(), systemPrompt: prompt.trim() },
+                {
+                  onSuccess: () => {
+                    setName('');
+                    setPrompt('');
+                    toast.success('Persona added.');
+                  },
+                  onError: (e) => toast.error(e.message ?? 'Could not add.'),
+                },
+              )
+            }
+          >
+            <Plus /> Add persona
+          </Button>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
