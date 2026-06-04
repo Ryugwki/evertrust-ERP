@@ -2,6 +2,7 @@
 
 import { PageHeader } from '@/components/common/page-header';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { MarketingFunnelBar } from './marketing-funnel-bar';
 import { MarketingDraftReview } from './marketing-draft-review';
 import { MarketingReport } from './marketing-report';
 import { MarketingGrowthEngine } from './marketing-growth-engine';
@@ -19,6 +20,7 @@ export function MarketingView() {
         title="Marketing"
         description="AIM new campaigns, track what's deployed, review RAG drafts, and read the Growth-Engine report."
       />
+      <MarketingFunnelBar />
       <Tabs defaultValue="drafts" className="w-full">
         <TabsList>
           <TabsTrigger value="drafts">Draft review</TabsTrigger>

@@ -1,70 +1,164 @@
 'use client';
 
-import { CheckCircle2, CircleDashed, Target, XCircle } from 'lucide-react';
-import type { CampaignStatus } from '@evertrust/shared';
-import { useCampaigns } from '@/hooks/use-campaigns';
+import { Loader2, RefreshCw } from 'lucide-react';
+import {
+  ARSENAL_STAGE_META,
+  STAGE_PRIMARY_METRIC,
+  type ArsenalStage,
+} from '@evertrust/shared';
+import {
+  useArsenalBackfill,
+  useArsenalRuns,
+  useMarketingReport,
+} from '@/hooks/use-arsenal';
 import { Can } from '@/components/auth/can';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { StatTile } from '@/components/common/stat-tile';
+import { cn } from '@/lib/utils';
+import { isRunning, latestRunFor, timeAgo } from '@/lib/arsenal-sequence';
 import { AimLaunchDialog } from '@/components/growth/aim-launch-dialog';
-import { SequenceStrip } from '@/components/growth/sequence-strip';
+import { RunStageButton } from '@/components/growth/run-stage-button';
+import { StatusDot } from '@/components/growth/status-dot';
 
-// Marketing → "Growth Engine" tab: AIM a new campaign (the targeting) + the arsenal
-// as one ordered sequence. Mirrors the growth-engine page's launch surface, surfaced
-// here so the whole acquisition funnel lives under one Marketing roof.
+// The arsenal pipeline in launch order, each stage tagged with its AIM-sequence
+// codename (mockup parity). Maps 1:1 to the real ArsenalStage values.
+const PIPELINE: {
+  stage: ArsenalStage;
+  code: string;
+  phase: string;
+  short: string;
+}[] = [
+  { stage: 'LEAD_SATELLITE', code: '01', phase: 'Target', short: 'Lead Sat' },
+  { stage: 'AMMO_FORGE', code: '02', phase: 'Arm', short: 'Ammo' },
+  { stage: 'REACH_BAZOOKA', code: '03', phase: 'Fire', short: 'Bazooka' },
+  { stage: 'REPLY_GLOCK', code: '04', phase: 'Catch', short: 'Glock' },
+  { stage: 'SLEEPER_GRENADE', code: '05', phase: 'Revive', short: 'Sleeper' },
+];
+
+// Marketing → "Growth Engine" tab (mockup design): AIM toolbar + a live engine
+// status strip + the arsenal as a 6-card sequence pipeline. Per-stage counts are
+// REAL (the primary metric from arsenal_runs); "—" until n8n reports one.
 export function MarketingGrowthEngine() {
-  const campaigns = useCampaigns();
-  const data = campaigns.data ?? [];
-  const ready = !campaigns.isLoading && !campaigns.isError;
-  const countFor = (status: CampaignStatus) =>
-    data.filter((c) => c.status === status).length;
-  const tile = (value: number) =>
-    campaigns.isLoading ? <Skeleton className="h-6 w-8" /> : value;
+  const report = useMarketingReport('week', null);
+  const runs = useArsenalRuns();
+  const backfill = useArsenalBackfill();
+
+  const runList = runs.data ?? [];
+  const stageReport = new Map(
+    (report.data?.stages ?? []).map((s) => [s.stage, s] as const),
+  );
+
+  const countFor = (stage: ArsenalStage): number | null => {
+    const s = stageReport.get(stage);
+    if (!s) return null;
+    const v = s.metrics[STAGE_PRIMARY_METRIC[stage]];
+    return v === undefined ? null : v;
+  };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          AIM launches a campaign; the rest of the arsenal runs and stays in sync.
-        </p>
+    <div className="flex flex-col gap-5">
+      {/* toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
         <Can permission="campaigns:write">
           <AimLaunchDialog />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => backfill.mutate()}
+            disabled={backfill.isPending}
+            title="Import recent runs + counts from n8n's execution history"
+          >
+            {backfill.isPending ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <RefreshCw />
+            )}
+            {backfill.isPending ? 'Syncing…' : 'Sync'}
+          </Button>
         </Can>
+        <p className="ml-auto text-xs text-muted-foreground">
+          AIM launches a campaign; the arsenal runs the rest on its own schedule.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile
-          label="Campaigns"
-          value={tile(data.length)}
-          hint={ready ? `${countFor('DRAFT')} awaiting deploy` : 'Total launched targets'}
-          accent="bg-sky-400"
-          icon={<Target className="size-4" />}
-        />
-        <StatTile
-          label="Deployed"
-          value={tile(countFor('DEPLOYED'))}
-          hint="Running autonomously in n8n"
-          accent="bg-emerald-400"
-          icon={<CheckCircle2 className="size-4" />}
-        />
-        <StatTile
-          label="Failed"
-          value={tile(countFor('FAILED'))}
-          hint={countFor('FAILED') > 0 ? 'Needs attention' : 'No deploy errors'}
-          accent="bg-destructive"
-          icon={<XCircle className="size-4" />}
-        />
-        <StatTile
-          label="Draft"
-          value={tile(countFor('DRAFT'))}
-          hint="Provisioned, not yet deployed"
-          accent="bg-amber-400"
-          icon={<CircleDashed className="size-4" />}
-        />
+      {/* engine status strip */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-muted/20 px-4 py-2.5 text-xs">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+          Engine
+        </span>
+        {PIPELINE.map((p) => {
+          const st = latestRunFor(runList, p.stage);
+          const c = countFor(p.stage);
+          return (
+            <span
+              key={p.stage}
+              className="inline-flex items-center gap-1.5 text-muted-foreground"
+            >
+              <StatusDot outcome={st.outcome} running={isRunning(st)} />
+              {p.short}{' '}
+              <b className="text-foreground tabular-nums">{c === null ? '—' : c}</b>
+            </span>
+          );
+        })}
       </div>
 
-      {/* The whole arsenal as one ordered sequence + the daily schedule. */}
-      <SequenceStrip />
+      {/* AIM sequence pipeline */}
+      <div>
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+          AIM sequence — the arsenal pipeline
+        </p>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+          {PIPELINE.map((p) => {
+            const st = latestRunFor(runList, p.stage);
+            const running = isRunning(st);
+            const c = countFor(p.stage);
+            return (
+              <div
+                key={p.stage}
+                className={cn(
+                  'flex flex-col rounded-xl border bg-card p-3',
+                  running &&
+                    'border-emerald-500/40 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]',
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+                    {p.code} · {p.phase}
+                  </span>
+                  <StatusDot outcome={st.outcome} running={running} />
+                </div>
+                <div className="mt-1 text-sm font-semibold leading-tight">
+                  {ARSENAL_STAGE_META[p.stage].label}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {running
+                    ? 'running…'
+                    : st.at
+                      ? `last ${timeAgo(st.at)}`
+                      : 'no runs yet'}
+                </div>
+                <div className="mt-2 text-2xl font-bold tabular-nums">
+                  {report.isLoading ? (
+                    <Skeleton className="h-7 w-8" />
+                  ) : c === null ? (
+                    <span className="text-muted-foreground/50">—</span>
+                  ) : (
+                    c
+                  )}
+                </div>
+                <Can permission="campaigns:write">
+                  <RunStageButton
+                    stage={p.stage}
+                    label="Run"
+                    variant="outline"
+                    size="sm"
+                  />
+                </Can>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

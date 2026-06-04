@@ -86,6 +86,11 @@ const DRAFTS: Draft[] = [
   },
 ];
 
+// Count of RAG drafts awaiting review — surfaced in the Marketing funnel bar.
+// (Mock today; becomes the real "Unsure"-bucket draft count once the RAG Agent
+// workflow reports them.)
+export const MARKETING_DRAFT_COUNT = DRAFTS.length;
+
 const AREA_CLASS: Record<Draft['area'], string> = {
   finance: 'bg-sky-500/15 text-sky-500',
   technical: 'bg-violet-500/15 text-violet-500',
