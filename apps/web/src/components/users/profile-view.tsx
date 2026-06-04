@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
+import { ArrowLeft, KeyRound } from 'lucide-react';
 import {
   DEPARTMENT_LABELS,
   PERMISSIONS,
@@ -10,11 +11,25 @@ import {
   ROLE_LABELS,
   effectivePermissions,
 } from '@evertrust/shared';
-import { useAdminUsers } from '@/hooks/use-admin-users';
+import {
+  useAdminUsers,
+  useSetPassword,
+  useUserStats,
+} from '@/hooks/use-admin-users';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Tabs,
   TabsContent,
@@ -54,7 +69,11 @@ function groupPermissions(perms: readonly string[]): [string, string[]][] {
 // activity history aren't tracked per-user yet — we say so rather than invent.
 export function ProfileView({ userId }: { userId: string }) {
   const users = useAdminUsers();
+  const stats = useUserStats(userId);
+  const setPw = useSetPassword();
   const [editOpen, setEditOpen] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [newPw, setNewPw] = useState('');
 
   if (users.isLoading) {
     return <Skeleton className="h-96 w-full rounded-lg" />;
@@ -162,20 +181,23 @@ export function ProfileView({ userId }: { userId: string }) {
         </CardContent>
       </Card>
 
-      {/* fact tiles — real data only */}
+      {/* contribution tiles — REAL per-user data (campaigns deployed, stages
+          triggered, audited actions) */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
-          label="Role"
-          value={ROLE_LABELS[user.role]}
-          accent={styles.dot}
+          label="Campaigns launched"
+          value={stats.data ? stats.data.campaignsLaunched : '—'}
+          accent="bg-sky-400"
         />
         <StatTile
-          label="Department"
-          value={user.department ? DEPARTMENT_LABELS[user.department] : '—'}
+          label="Stages run"
+          value={stats.data ? stats.data.stagesRun : '—'}
+          accent="bg-violet-400"
         />
         <StatTile
-          label="Position"
-          value={user.position ? POSITION_LABELS[user.position] : '—'}
+          label="Actions logged"
+          value={stats.data ? stats.data.actionsLogged : '—'}
+          accent="bg-emerald-400"
         />
         <StatTile
           label="Permissions"
@@ -280,6 +302,23 @@ export function ProfileView({ userId }: { userId: string }) {
               <div className="flex flex-col divide-y">
                 <AccountRow k="Email" v={user.email} />
                 <AccountRow k="Phone" v={user.phone ?? '—'} />
+                <div className="flex items-center justify-between gap-4 py-2.5 text-sm">
+                  <span className="text-muted-foreground">Password</span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium tracking-widest">••••••••</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setNewPw('');
+                        setPwOpen(true);
+                      }}
+                    >
+                      <KeyRound className="mr-1 size-3.5" /> Change
+                    </Button>
+                  </div>
+                </div>
                 <AccountRow k="Status" v={user.active ? 'Active' : 'Inactive'} />
                 <AccountRow k="Role" v={ROLE_LABELS[user.role]} />
                 <AccountRow
@@ -289,28 +328,100 @@ export function ProfileView({ userId }: { userId: string }) {
                 <AccountRow k="User ID" v={user.id} mono />
               </div>
               <p className="mt-4 text-xs text-muted-foreground">
-                Password and two-factor settings are managed by each person from
-                their own account — they aren&apos;t shown or editable here.
+                Changing the password sets a new one immediately — there&apos;s no
+                email reset flow, so share it securely.
               </p>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Activity */}
+        {/* Activity — real, from the audit log */}
         <TabsContent value="activity" className="mt-4">
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">
-                Per-user activity history isn&apos;t tracked yet. Once it is,
-                recent actions (campaigns launched, drafts approved, meetings
-                coached) will appear here.
-              </p>
+              {stats.isLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : !stats.data || stats.data.recentActivity.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No recorded activity yet.
+                </p>
+              ) : (
+                <div className="flex flex-col divide-y">
+                  {stats.data.recentActivity.map((a, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-4 py-2.5 text-sm"
+                    >
+                      <span>
+                        <span className="font-medium capitalize">
+                          {a.action.toLowerCase()}
+                        </span>{' '}
+                        <span className="text-muted-foreground">· {a.entity}</span>
+                      </span>
+                      <span className="whitespace-nowrap text-xs text-muted-foreground">
+                        {formatDateTime(a.at)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
       <UserEditDialog user={user} open={editOpen} onOpenChange={setEditOpen} />
+
+      {/* admin password reset */}
+      <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set a new password</DialogTitle>
+            <DialogDescription>
+              {user.name} · {user.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-pw">New password</Label>
+            <Input
+              id="new-pw"
+              type="password"
+              value={newPw}
+              placeholder="At least 8 characters"
+              onChange={(e) => setNewPw(e.target.value)}
+            />
+            {newPw && newPw.length < 8 ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Use at least 8 characters.
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setPwOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={newPw.length < 8 || setPw.isPending}
+              onClick={() =>
+                setPw.mutate(
+                  { id: user.id, password: newPw },
+                  {
+                    onSuccess: () => {
+                      toast.success(`Password updated for ${user.name}.`);
+                      setPwOpen(false);
+                    },
+                    onError: (e) =>
+                      toast.error(e.message ?? 'Could not set the password.'),
+                  },
+                )
+              }
+            >
+              {setPw.isPending ? 'Saving…' : 'Set password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

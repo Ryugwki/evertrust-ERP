@@ -299,6 +299,97 @@ describe('UsersService — createUser', () => {
   });
 });
 
+describe('UsersService — setPassword (admin reset)', () => {
+  it('upserts an argon2 credential for the user', async () => {
+    const { service, creds } = seed();
+    await service.setPassword(ORG_A, 'SUPER_ADMIN', BOB, 'NewStrongPass1');
+    const row = creds.rows.find((c) => c.userId === BOB);
+    expect(row).toBeDefined();
+    expect(String(row!.passwordHash)).toMatch(/^\$argon2/);
+  });
+
+  it("blocks a non-Super-Admin from resetting a Super Admin's password", async () => {
+    const { service } = seed();
+    await expect(
+      service.setPassword(ORG_A, 'MANAGER', ALICE, 'NewStrongPass1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('404s for a user in another org', async () => {
+    const { service } = seed();
+    await expect(
+      service.setPassword(ORG_A, 'SUPER_ADMIN', MALLORY, 'NewStrongPass1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('UsersService — getStats', () => {
+  it('returns real per-user counts + recent activity', async () => {
+    const users = new FakeTable([
+      {
+        id: ALICE,
+        organizationId: ORG_A,
+        name: 'Alice',
+        email: 'alice@evertrust-germany.de',
+        role: 'SUPER_ADMIN',
+        active: true,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        __seq: 1,
+      },
+    ]);
+    const campaigns = new FakeTable([
+      { id: 'c1', organizationId: ORG_A, deployedBy: ALICE },
+      { id: 'c2', organizationId: ORG_A, deployedBy: ALICE },
+      { id: 'c3', organizationId: ORG_A, deployedBy: BOB },
+    ]);
+    const runs = new FakeTable([
+      { id: 'r1', triggeredBy: ALICE },
+      { id: 'r2', triggeredBy: BOB },
+    ]);
+    const audit = new FakeTable([
+      {
+        id: 'x1',
+        organizationId: ORG_A,
+        actorId: ALICE,
+        entity: 'campaigns',
+        action: 'CREATE',
+        at: new Date('2026-02-01T00:00:00Z'),
+      },
+      {
+        id: 'x2',
+        organizationId: ORG_A,
+        actorId: ALICE,
+        entity: 'users',
+        action: 'UPDATE',
+        at: new Date('2026-02-02T00:00:00Z'),
+      },
+      {
+        id: 'x3',
+        organizationId: ORG_A,
+        actorId: BOB,
+        entity: 'tenders',
+        action: 'UPDATE',
+        at: new Date('2026-02-03T00:00:00Z'),
+      },
+    ]);
+    const { db } = makeFakeDb(
+      new Map<unknown, FakeTable>([
+        [schema.users, users],
+        [schema.campaigns, campaigns],
+        [schema.arsenalRuns, runs],
+        [schema.auditLog, audit],
+      ]),
+    );
+    const service = new UsersService(db);
+    const stats = await service.getStats(ORG_A, ALICE);
+    expect(stats.campaignsLaunched).toBe(2);
+    expect(stats.stagesRun).toBe(1);
+    expect(stats.actionsLogged).toBe(2);
+    expect(stats.recentActivity.length).toBe(2);
+    expect(typeof stats.recentActivity[0]!.at).toBe('string');
+  });
+});
+
 describe('UsersService — deleteUser', () => {
   it('deletes a normal user and their credential', async () => {
     const { service, users, creds } = seed();

@@ -10,14 +10,18 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import type { AdminUserDto } from '@evertrust/shared';
+import type { AdminUserDto, UserStatsDto } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/auth.types';
 import { OrgId } from '../common/tenant';
 import { setAuditContext } from '../common/audit-context';
 import { UsersService } from './users.service';
-import { CreateUserBodyDto, UpdateUserBodyDto } from './users.dto';
+import {
+  CreateUserBodyDto,
+  SetPasswordBodyDto,
+  UpdateUserBodyDto,
+} from './users.dto';
 
 // Admin surface. RBAC is permission-based: the global PermissionsGuard 403s any
 // principal whose role lacks the required permission. `admin:config` is held by
@@ -120,6 +124,37 @@ export class AdminController {
     });
 
     return created;
+  }
+
+  // Real per-user contribution stats for the profile page (campaigns launched,
+  // stages triggered, audited actions + recent activity). Tenant-scoped.
+  @RequirePermissions('users:manage')
+  @Get('users/:id/stats')
+  getStats(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+  ): Promise<UserStatsDto> {
+    return this.users.getStats(orgId, id);
+  }
+
+  // Admin password reset (no public reset flow). users:manage; only a Super
+  // Admin may reset another Super Admin's password. AUDITED (no secrets stored).
+  @RequirePermissions('users:manage')
+  @Post('users/:id/password')
+  async setPassword(
+    @OrgId() orgId: string,
+    @CurrentUser() actingUser: AuthUser,
+    @Param('id') id: string,
+    @Body() body: SetPasswordBodyDto,
+    @Req() req: Request,
+  ): Promise<{ id: string }> {
+    await this.users.setPassword(orgId, actingUser.role, id, body.password);
+    setAuditContext(req, {
+      entity: 'users',
+      entityId: id,
+      action: 'PASSWORD_RESET',
+    });
+    return { id };
   }
 
   // Hard-delete a user. Guarded in the service (never yourself / a Super Admin;

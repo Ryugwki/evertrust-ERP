@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   AdminUserDto,
   CreateUserDto,
+  SetPasswordDto,
+  UserStatsDto,
   ApprovalRequestDto,
   ArsenalBackfillResultDto,
   ArsenalExecutionsDto,
@@ -430,6 +432,21 @@ export const api = {
     remove: (id: string) =>
       request<{ id: string }>(`/admin/users/${id}`, {
         method: 'DELETE',
+        schema: z.object({ id: z.string() }),
+      }),
+
+    // Real per-user contribution stats for the profile page.
+    stats: (id: string, signal?: AbortSignal) =>
+      request<UserStatsDto>(`/admin/users/${id}/stats`, {
+        schema: UserStatsDto,
+        signal,
+      }),
+
+    // Admin password reset (sets a new password for the user).
+    setPassword: (id: string, password: string) =>
+      request<{ id: string }>(`/admin/users/${id}/password`, {
+        method: 'POST',
+        body: SetPasswordDto.parse({ password }),
         schema: z.object({ id: z.string() }),
       }),
   },

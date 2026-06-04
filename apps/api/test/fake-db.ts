@@ -53,6 +53,9 @@ function parseCondition(sql: unknown): ParsedCondition {
 const COLUMN_TO_KEY: Record<string, string> = {
   organization_id: 'organizationId',
   user_id: 'userId',
+  deployed_by: 'deployedBy',
+  triggered_by: 'triggeredBy',
+  actor_id: 'actorId',
   id: 'id',
   status: 'status',
   vergabe_id: 'vergabeId',

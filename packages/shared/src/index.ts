@@ -584,6 +584,31 @@ export const CreateUserDto = z.object({
 });
 export type CreateUserDto = z.infer<typeof CreateUserDto>;
 
+// Admin password reset (no public reset flow). users:manage sets a new password
+// for a user; the API re-hashes (argon2) the credential.
+export const SetPasswordDto = z.object({
+  password: z.string().min(8).max(200),
+});
+export type SetPasswordDto = z.infer<typeof SetPasswordDto>;
+
+// Real per-user contribution stats for the profile page. Every field is derived
+// from actual rows (campaigns.deployedBy, arsenal_runs.triggeredBy, audit_log
+// actorId) — no fabricated metrics.
+export const UserActivityItemDto = z.object({
+  entity: z.string(),
+  action: z.string(),
+  at: z.string(),
+});
+export type UserActivityItemDto = z.infer<typeof UserActivityItemDto>;
+
+export const UserStatsDto = z.object({
+  campaignsLaunched: z.number(),
+  stagesRun: z.number(),
+  actionsLogged: z.number(),
+  recentActivity: z.array(UserActivityItemDto),
+});
+export type UserStatsDto = z.infer<typeof UserStatsDto>;
+
 // ---- Tender assignment (manual L5-PIC assign) ----
 // Body for POST /tenders/:id/assign. reason is optional context (<= 500 chars).
 export const AssignTenderDto = z.object({

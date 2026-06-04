@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import { schema } from '@evertrust/db';
 import { effectivePermissions } from '@evertrust/shared';
@@ -19,6 +19,7 @@ import type {
   UpdateUserDto,
   UserListItemDto,
   UserRole,
+  UserStatsDto,
 } from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import { tenantScope } from '../common/tenant';
@@ -363,5 +364,92 @@ export class UsersService {
     }
 
     return { name: prev.name, email: prev.email };
+  }
+
+  // Real per-user contribution stats for the profile page (no fabricated data):
+  // campaigns this user deployed, arsenal stages they triggered, and their
+  // audited actions + a recent-activity feed. Tenant-scoped; 404 if not in org.
+  async getStats(orgId: string, userId: string): Promise<UserStatsDto> {
+    const u = await this.db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(and(tenantScope(orgId, schema.users), eq(schema.users.id, userId)))
+      .limit(1);
+    if (!u[0]) throw new NotFoundException('User not found');
+
+    const campaigns = await this.db
+      .select({ id: schema.campaigns.id })
+      .from(schema.campaigns)
+      .where(
+        and(
+          tenantScope(orgId, schema.campaigns),
+          eq(schema.campaigns.deployedBy, userId),
+        ),
+      );
+
+    const runs = await this.db
+      .select({ id: schema.arsenalRuns.id })
+      .from(schema.arsenalRuns)
+      .where(eq(schema.arsenalRuns.triggeredBy, userId));
+
+    const audits = await this.db
+      .select({
+        entity: schema.auditLog.entity,
+        action: schema.auditLog.action,
+        at: schema.auditLog.at,
+      })
+      .from(schema.auditLog)
+      .where(
+        and(
+          tenantScope(orgId, schema.auditLog),
+          eq(schema.auditLog.actorId, userId),
+        ),
+      )
+      .orderBy(desc(schema.auditLog.at));
+
+    return {
+      campaignsLaunched: campaigns.length,
+      stagesRun: runs.length,
+      actionsLogged: audits.length,
+      recentActivity: audits.slice(0, 8).map((a) => ({
+        entity: a.entity,
+        action: a.action,
+        at: new Date(a.at).toISOString(),
+      })),
+    };
+  }
+
+  // Admin password reset — re-hash the credential for a user in this org (404 if
+  // not found). Upserts the credential row. There's no public reset flow.
+  async setPassword(
+    orgId: string,
+    actingUserRole: UserRole,
+    userId: string,
+    password: string,
+  ): Promise<void> {
+    const u = await this.db
+      .select({ id: schema.users.id, role: schema.users.role })
+      .from(schema.users)
+      .where(and(tenantScope(orgId, schema.users), eq(schema.users.id, userId)))
+      .limit(1);
+    const target = u[0];
+    if (!target) throw new NotFoundException('User not found');
+    if (target.role === 'SUPER_ADMIN' && actingUserRole !== 'SUPER_ADMIN') {
+      throw new ForbiddenException(
+        "Only a Super Admin can reset a Super Admin's password",
+      );
+    }
+
+    const passwordHash = await argon2.hash(password);
+    const updated = await this.db
+      .update(schema.authCredentials)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(schema.authCredentials.userId, userId))
+      .returning({ userId: schema.authCredentials.userId });
+    if (updated.length === 0) {
+      await this.db
+        .insert(schema.authCredentials)
+        .values({ userId, passwordHash });
+    }
   }
 }

@@ -16,6 +16,7 @@ export const queryKeys = {
   adminUsers: {
     all: ['admin-users'] as const,
     list: () => ['admin-users', 'list'] as const,
+    stats: (id: string) => ['admin-users', 'stats', id] as const,
   },
 
   tenders: {
