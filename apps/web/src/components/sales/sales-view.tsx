@@ -1,460 +1,685 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import {
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react';
+import type { MeetingDto } from '@evertrust/shared';
+import {
+  useLinkMeeting,
+  useMeetings,
+  useSyncMeetings,
+} from '@/hooks/use-meetings';
+import { useCampaigns } from '@/hooks/use-campaigns';
 import { PageHeader } from '@/components/common/page-header';
-import { Card } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Can } from '@/components/auth/can';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { formatDateTime } from '@/lib/tender-format';
 
-// ---------------------------------------------------------------------------
-// Mock data (UI-first). Real data later comes from the Read AI meeting agent +
-// a Claude "Hormozi-lens" coaching pass. Shape mirrors docs/superpowers/specs.
-// ---------------------------------------------------------------------------
-type Dim = { name: string; score: number; note?: string };
-type Worked = { n: number; title: string; method: string; quote: string; why: string };
-type Improve = { n: number; title: string; method: string; what?: string; tryThis: string };
-type Meeting = {
-  id: string;
-  title: string;
-  listTitle: string;
-  listMeta: string;
-  metaLine: string;
-  chip: number;
-  metadata: Record<string, string>;
-  signals: { talk: string; sentiment: string; sentTone: 'good' | 'mid' | 'low'; engagement: string; questions: string };
-  exec: string;
-  tender: { linked: true; name: string; meta: string } | { linked: false; bestName: string; bestMatch: string; bestMeta: string };
-  headline: string;
-  aeOverall: number;
-  clientOverall: number;
-  aeDims: Dim[];
-  clientDims: Dim[];
-  worked: Worked[];
-  improve: Improve[];
-  confidence: string;
-};
+const ALL = 'all';
+const NONE = 'none';
 
-const MEETINGS: Meeting[] = [
-  {
-    id: 'kodeca',
-    title: 'Kodeca — German tender matching pitch',
-    listTitle: 'Kodeca — tender matching pitch',
-    listMeta: 'Jun 3 · ~15 min · Hanna → Vic',
-    metaLine: '2026-06-03 · ~15 min · 2,243 words · AE Hanna Gia Nguyen → Vic Kurs',
-    chip: 3.0,
-    metadata: {
-      AE: 'Hanna Gia Nguyen',
-      'Client contact': 'Vic Kurs',
-      'Product pitched': 'German public tender matching & bid-application (EverTrust)',
-      Duration: '~15 min · 2,243 words',
-      Flags: 'none',
-    },
-    signals: { talk: '62% / 38%', sentiment: 'Positive-leaning', sentTone: 'good', engagement: '74', questions: '6 / 4' },
-    exec:
-      "Hanna opened with a clear value proposition — matching Polish IT vendors to German public tenders — and described fees and process. Vic showed interest but Hanna didn't get the quantified cost-of-inaction, gave no concrete admin-fee number or risk-reversal, and pushed for a quick decision without fully building quantified value.",
-    tender: { linked: false, bestName: 'LED Retrofit Berlin 2026', bestMatch: '87%', bestMeta: 'NOT_STARTED · buyer Land Berlin · deadline Jul 15 · €2.4M' },
-    headline: 'Interested but non-committal buyer; solid opener, but missing budget discovery, risk-reversal, and quantified value before the ask.',
-    aeOverall: 3.0,
-    clientOverall: 3.0,
-    aeDims: [
-      { name: 'Communication', score: 3, note: "Conveyed dream outcome + social proof; didn't hit all Value-Equation levers or neutralize the admin-fee objection." },
-      { name: 'Understanding client needs', score: 3, note: 'Asked about experience & role; got no quantified status-quo cost or budget.' },
-      { name: 'Technical explanations', score: 3, note: 'Gave commission %, said admin fee is upfront, but no amount and no risk-reversal.' },
-    ],
-    clientDims: [
-      { name: 'Buying intent', score: 3 },
-      { name: 'Pain acknowledgment', score: 3 },
-      { name: 'Decision authority', score: 3 },
-      { name: 'Objection profile', score: 3 },
-      { name: 'Misunderstandings', score: 3 },
-    ],
-    worked: [
-      { n: 1, title: 'Discover before pitching', method: 'Discover Before Pitching', quote: 'Early discovery of past tender experience', why: 'surfaced relevant context for fit.' },
-      { n: 2, title: 'Articulated the dream outcome', method: 'Value Equation', quote: 'Market expansion & stability', why: 'painted the life-after vision.' },
-      { n: 3, title: 'Anchored on price', method: 'Anchor High', quote: 'Commission 3.5–4%', why: 'a clear pricing anchor.' },
-      { n: 4, title: 'Social proof', method: 'Value Equation', quote: 'Awarded project (€687,000)', why: 'raised perceived likelihood of success.' },
-      { n: 5, title: 'Created urgency', method: 'CLOSER', quote: 'Urgency around shortlisting', why: 'shortens the time-delay lever when used right.' },
-    ],
-    improve: [
-      { n: 1, title: 'Quantify cost of status quo', method: 'Cost of Status Quo', what: 'never asked the cost of NOT pursuing German tenders.', tryThis: '"What\'s the cost to Kodeca of not entering this year?" — before quoting fees.' },
-      { n: 2, title: 'Discover budget before quoting', method: 'Discover Budget', tryThis: '"What budget have you set aside for entry costs?" before terms.' },
-      { n: 3, title: 'Add a risk reversal', method: 'Risk Reversal', tryThis: 'commission only from funded invoices + money-back on admin fee if not shortlisted.' },
-      { n: 4, title: 'Name the objection proactively', method: 'Name the Objection', what: 'deferred the admin-fee question.', tryThis: '"You\'re probably wondering how high the admin fee is — here\'s why, and how we mitigate it."' },
-      { n: 5, title: 'Build value before urgency', method: 'CLOSER', tryThis: "tie contract sizes to Kodeca's numbers, then introduce the deadline." },
-    ],
-    confidence: '0.84',
-  },
-  {
-    id: 'stadtwerke',
-    title: 'Stadtwerke München — LED retrofit qualification',
-    listTitle: 'Stadtwerke München — LED retrofit',
-    listMeta: 'Jun 2 · 28 min',
-    metaLine: '2026-06-02 · 28 min · 3,810 words · AE Hanna Gia Nguyen → Markus Brandt + 1',
-    chip: 4.1,
-    metadata: {
-      AE: 'Hanna Gia Nguyen',
-      'Client contact': 'Markus Brandt — Procurement Lead',
-      'Product pitched': 'City-wide LED streetlight retrofit · modular, KRITIS-grade',
-      Duration: '28 min · 3,810 words',
-      Flags: 'none',
-    },
-    signals: { talk: '48% / 52%', sentiment: 'Positive', sentTone: 'good', engagement: '86', questions: '9 / 7' },
-    exec:
-      'A tight, discovery-first qualification call. Hanna quantified the reliability pain (recurring outages), anchored on a premium modular-delivery SLA, held pricing until value was established, and secured a concrete next step plus a same-day spec sheet.',
-    tender: { linked: true, name: 'Straßenbeleuchtung München 2026', meta: 'OPEN · buyer Stadtwerke München · deadline Jul 22 · €3.1M' },
-    headline: 'Strong qualification call — clear pain, anchored value, concrete next step. Tighten the budget ask.',
-    aeOverall: 4.0,
-    clientOverall: 4.2,
-    aeDims: [
-      { name: 'Communication', score: 4, note: 'Balanced talk-time, led with discovery, tied modular delivery to KRITIS reliability.' },
-      { name: 'Understanding client needs', score: 4, note: 'Quantified outage cost and the July window; mapped the decision process.' },
-      { name: 'Technical explanations', score: 4, note: 'Explained the SLA + certification path concretely and offered a reference project.' },
-    ],
-    clientDims: [
-      { name: 'Buying intent', score: 4 },
-      { name: 'Pain acknowledgment', score: 4 },
-      { name: 'Decision authority', score: 4 },
-      { name: 'Objection profile', score: 4 },
-      { name: 'Misunderstandings', score: 5 },
-    ],
-    worked: [
-      { n: 1, title: 'Discovery before pitching', method: 'Discover Before Pitching', quote: 'Asked about outage history & SLA expectations first', why: 'grounded the pitch in real pain.' },
-      { n: 2, title: 'Reliability as the dream outcome', method: 'Value Equation', quote: 'Zero-outage public lighting', why: 'high-value outcome for a KRITIS buyer.' },
-      { n: 3, title: 'Anchored on the premium tier', method: 'Anchor High', quote: 'Led with the 6-week SLA tier', why: 'set a strong reference point.' },
-      { n: 4, title: 'Offered an uptime guarantee', method: 'Risk Reversal', quote: '99.5% uptime or service credits', why: 'reduced perceived delivery risk.' },
-      { n: 5, title: 'Locked a concrete next step', method: 'CLOSER', quote: 'Commercial deep-dive booked + owner named', why: 'clear forward motion.' },
-    ],
-    improve: [
-      { n: 1, title: 'Get the allocated budget', method: 'Discover Budget', what: 'value was strong but no budget figure was confirmed.', tryThis: '"What budget band is earmarked for this retrofit?" before the commercial call.' },
-      { n: 2, title: 'Send the leave-behind same day', method: 'Reduce Effort/Delay', tryThis: 'email the spec sheet within the hour while interest is hot.' },
-    ],
-    confidence: '0.90',
-  },
-  {
-    id: 'bima',
-    title: 'BImA Berlin — modular units discovery',
-    listTitle: 'BImA Berlin — modular units',
-    listMeta: 'May 30 · 41 min',
-    metaLine: '2026-05-30 · 41 min · 5,640 words · AE Hanna Gia Nguyen → Dr. Lena Vogt + 3',
-    chip: 4.5,
-    metadata: {
-      AE: 'Hanna Gia Nguyen',
-      'Client contact': 'Dr. Lena Vogt — Project Lead (BImA)',
-      'Product pitched': 'Rapidly-deployable modular buildings · offices, healthcare, temporary schools',
-      Duration: '41 min · 5,640 words',
-      Flags: 'none',
-    },
-    signals: { talk: '41% / 59%', sentiment: 'Positive', sentTone: 'good', engagement: '92', questions: '12 / 15' },
-    exec:
-      'An exemplary discovery call. Hanna listened most of the time, mapped the deployment timeline and KRITIS constraints, quantified the cost of delays, named budget early, offered a staged risk-reversal, and ended with strong mutual next steps and an internal champion.',
-    tender: { linked: true, name: 'Modulare Verwaltungsgebäude — Bund 2026', meta: 'NOT_STARTED · buyer BImA · deadline Aug 14 · €8.6M' },
-    headline: 'Textbook discovery — listened more than pitched, quantified value, identified a champion. Could trial-close a touch earlier.',
-    aeOverall: 4.7,
-    clientOverall: 4.4,
-    aeDims: [
-      { name: 'Communication', score: 5, note: "Listened 59% of the time; reflected back BImA's priorities precisely." },
-      { name: 'Understanding client needs', score: 5, note: 'Quantified deployment-delay cost; mapped the multi-stakeholder process.' },
-      { name: 'Technical explanations', score: 4, note: 'Clear on modular options; deferred one certification detail to follow-up.' },
-    ],
-    clientDims: [
-      { name: 'Buying intent', score: 5 },
-      { name: 'Pain acknowledgment', score: 5 },
-      { name: 'Decision authority', score: 4 },
-      { name: 'Objection profile', score: 4 },
-      { name: 'Misunderstandings', score: 5 },
-    ],
-    worked: [
-      { n: 1, title: 'Discovery dominated the call', method: 'Discover Before Pitching', quote: '~25 min of questions before any pitch', why: 'earned trust and surfaced the real constraints.' },
-      { n: 2, title: 'Quantified deployment-speed value', method: 'Value Equation', quote: 'Weeks-not-months to occupancy', why: "tied speed to BImA's cost of delay." },
-      { n: 3, title: 'Named budget early', method: 'Discover Budget', quote: 'Asked the allocated envelope upfront', why: 'avoided quoting blind.' },
-      { n: 4, title: 'Staged risk-reversal', method: 'Risk Reversal', quote: 'Pilot module before full rollout', why: 'de-risked a large commitment.' },
-      { n: 5, title: 'Mutual action plan + champion', method: 'CLOSER', quote: 'Co-built next steps; Dr. Vogt to sponsor', why: 'strong forward commitment.' },
-    ],
-    improve: [
-      { n: 1, title: 'Trial-close a little earlier', method: 'CLOSER', what: 'discovery ran long before testing commitment.', tryThis: 'mid-call: "If we hit your timeline, is this something you\'d champion?"' },
-      { n: 2, title: 'Confirm the procurement regime', method: 'Qualify the Process', tryThis: 'verify above/below EU threshold to tailor the bid format.' },
-    ],
-    confidence: '0.92',
-  },
-  {
-    id: 'rheinmain',
-    title: 'Rhein-Main Logistik — follow-up',
-    listTitle: 'Rhein-Main Logistik — follow-up',
-    listMeta: 'May 28 · 12 min',
-    metaLine: '2026-05-28 · 12 min · 1,410 words · AE Hanna Gia Nguyen → Stefan Adler',
-    chip: 2.4,
-    metadata: {
-      AE: 'Hanna Gia Nguyen',
-      'Client contact': 'Stefan Adler',
-      'Product pitched': 'Container buffer / inland depot modular systems',
-      Duration: '12 min · 1,410 words',
-      Flags: '⚠ low engagement · no next step set',
-    },
-    signals: { talk: '78% / 22%', sentiment: 'Neutral → negative', sentTone: 'low', engagement: '51', questions: '3 / 1' },
-    exec:
-      'A rushed follow-up. Hanna dominated the conversation, re-pitched features without re-establishing the pain, never confirmed budget or decision authority, and ended without a concrete next step. The buyer disengaged toward the end.',
-    tender: { linked: false, bestName: 'Container Buffer — Hamburg Port', bestMatch: '64%', bestMeta: 'NOT_STARTED · deadline Jul 30' },
-    headline: 'Weak follow-up — AE dominated airtime, no pain re-established, no authority/budget, no next step. Recoverable with a reset call.',
-    aeOverall: 2.3,
-    clientOverall: 2.4,
-    aeDims: [
-      { name: 'Communication', score: 2, note: 'Talked 78% of the time; monologued features. Buyer went quiet in the last third.' },
-      { name: 'Understanding client needs', score: 2, note: 'No discovery — assumed the prior pain still held.' },
-      { name: 'Technical explanations', score: 3, note: 'Specs accurate but delivered without the context the buyer asked for.' },
-    ],
-    clientDims: [
-      { name: 'Buying intent', score: 2 },
-      { name: 'Pain acknowledgment', score: 2 },
-      { name: 'Decision authority', score: 2 },
-      { name: 'Objection profile', score: 3 },
-      { name: 'Misunderstandings', score: 3 },
-    ],
-    worked: [
-      { n: 1, title: 'Maintained rapport', method: 'Build Rapport', quote: 'Friendly, referenced the prior call', why: 'kept the relationship warm despite a weak call.' },
-      { n: 2, title: 'Accurate technical recall', method: 'Credibility', quote: 'Recalled prior requirements correctly', why: 'showed preparation.' },
-    ],
-    improve: [
-      { n: 1, title: 'Talk far less, listen more', method: 'Discover Before Pitching', what: '78% AE talk-time — buyer barely spoke.', tryThis: 'open with a question; aim for a 40/60 talk ratio.' },
-      { n: 2, title: 'Re-establish the pain', method: 'Cost of Status Quo', what: 're-pitched features without re-confirming the problem.', tryThis: '"Since we last spoke, what\'s changed about the depot bottleneck?"' },
-      { n: 3, title: 'Confirm decision authority', method: 'Qualify', what: 'never checked who signs off.', tryThis: '"Who else needs to be in the room to move this forward?"' },
-      { n: 4, title: 'Secure a concrete next step', method: 'CLOSER', what: 'call ended with no date or action.', tryThis: 'always leave with a scheduled next step + owner.' },
-      { n: 5, title: 'Quantify value vs. status quo', method: 'Value Equation', tryThis: "link the container-buffer ROI to Rhein-Main's throughput numbers." },
-    ],
-    confidence: '0.81',
-  },
+// Local view of the workflow's Sales Analysis Schema (stored as jsonb). Read
+// defensively — the LLM output can drift.
+interface Score {
+  score?: number | null;
+  rationale?: string | null;
+}
+interface Item {
+  moment?: string;
+  area?: string;
+  timestamp?: string;
+  why_effective?: string;
+  observation?: string;
+  evidence_quote?: string;
+  suggestion?: string;
+  methodology?: { source?: string; pattern?: string };
+}
+interface Analysis {
+  overall_summary?: string;
+  strengths?: Item[];
+  weaknesses?: Item[];
+  performance_score?: Record<string, Score>;
+  client_analysis?: Record<string, Score>;
+}
+
+const PERF: [string, string][] = [
+  ['understanding_client_needs', 'Understanding client needs'],
+  ['communication', 'Communication'],
+  ['technical_explanation', 'Technical explanation'],
+  ['aggressiveness', 'Aggressiveness'],
+];
+const CLIENT: [string, string][] = [
+  ['buying_intent', 'Buying intent'],
+  ['interest', 'Interest'],
+  ['communication', 'Communication'],
 ];
 
-// ---- helpers --------------------------------------------------------------
-function tone(score: number): 'good' | 'mid' | 'low' {
-  return score >= 4 ? 'good' : score >= 3 ? 'mid' : 'low';
-}
-const TEXT: Record<'good' | 'mid' | 'low', string> = {
-  good: 'text-emerald-500',
-  mid: 'text-amber-500',
-  low: 'text-red-500',
-};
-const BARBG: Record<'good' | 'mid' | 'low', string> = {
-  good: 'bg-emerald-500',
-  mid: 'bg-amber-500',
-  low: 'bg-red-500',
-};
-const CHIPBG: Record<'good' | 'mid' | 'low', string> = {
-  good: 'bg-emerald-500/15 text-emerald-500',
-  mid: 'bg-amber-500/15 text-amber-500',
-  low: 'bg-red-500/15 text-red-500',
-};
+const scoreClass = (s: number) =>
+  s >= 70
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : s >= 50
+      ? 'text-amber-600 dark:text-amber-400'
+      : 'text-red-600 dark:text-red-400';
+const barClass = (s: number) =>
+  s >= 70 ? 'bg-emerald-500' : s >= 50 ? 'bg-amber-500' : 'bg-red-500';
+const campName = (c: { name?: string | null; project?: string | null }) =>
+  c.name || c.project || '(campaign)';
 
-function Ring({ value, label }: { value: number; label: string }) {
-  const t = tone(value);
-  const pct = Math.round((value / 5) * 100);
-  const ringColor = t === 'good' ? '#10b981' : t === 'mid' ? '#f59e0b' : '#ef4444';
-  return (
-    <div className="text-center">
-      <div
-        className="grid size-[74px] place-items-center rounded-full"
-        style={{ background: `conic-gradient(${ringColor} ${pct}%, var(--muted) 0)` }}
-      >
-        <div className="grid size-[56px] place-items-center rounded-full bg-card">
-          <span className="text-lg font-bold leading-none">{value.toFixed(1)}</span>
-        </div>
-      </div>
-      <div className="mt-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-    </div>
-  );
-}
-
-function DimBar({ d, withNote }: { d: Dim; withNote?: boolean }) {
-  const t = tone(d.score);
-  return (
-    <div className="mb-3">
-      <div className="mb-1 flex justify-between text-sm">
-        <span>{d.name}</span>
-        <span className={cn('font-bold', TEXT[t])}>{d.score}/5</span>
-      </div>
-      <div className="h-[7px] overflow-hidden rounded-full bg-muted">
-        <div className={cn('h-full rounded-full', BARBG[t])} style={{ width: `${(d.score / 5) * 100}%` }} />
-      </div>
-      {withNote && d.note ? <p className="mt-1.5 text-xs text-muted-foreground">{d.note}</p> : null}
-    </div>
-  );
-}
-
-function Collapsible({ open, summary, children }: { open?: boolean; summary: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <details open={open} className="mb-2 overflow-hidden rounded-xl border bg-muted/30">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-        {summary}
-      </summary>
-      <div className="px-3.5 pb-3 pl-8 text-sm text-muted-foreground">{children}</div>
-    </details>
-  );
-}
-
-const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <p className="mb-2 mt-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:mt-0">{children}</p>
-);
-
+// Sales page: meetings synced from the EVERTRUST - SALES AGENT n8n workflow,
+// each attributed to its campaign (prospect email → lead). Search + Campaign /
+// AE / Persona / Date filters; detail shows the Hormozi analysis + lets you
+// manually link an unattributed meeting.
 export function SalesView() {
-  const [curId, setCurId] = useState('kodeca');
-  const m = MEETINGS.find((x) => x.id === curId) ?? MEETINGS[0];
-  if (!m) return null;
+  const meetings = useMeetings();
+  const sync = useSyncMeetings();
+  const link = useLinkMeeting();
+  const campaigns = useCampaigns();
+  const campList = campaigns.data ?? [];
+  const all = meetings.data ?? [];
+
+  const [search, setSearch] = useState('');
+  const [fCampaign, setFCampaign] = useState(ALL);
+  const [fAe, setFAe] = useState(ALL);
+  const [fPersona, setFPersona] = useState(ALL);
+  const [bucket, setBucket] = useState(ALL);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [changing, setChanging] = useState(false);
+  const [linkValue, setLinkValue] = useState('');
+
+  const aes = useMemo(
+    () => [...new Set(all.map((m) => m.aeName).filter(Boolean))] as string[],
+    [all],
+  );
+  const personas = useMemo(
+    () => [...new Set(all.map((m) => m.persona).filter(Boolean))] as string[],
+    [all],
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const now = Date.now();
+    const cut =
+      bucket === 'week'
+        ? now - 7 * 864e5
+        : bucket === 'month'
+          ? now - 30 * 864e5
+          : null;
+    return all.filter((m) => {
+      if (fCampaign === NONE && m.campaignId) return false;
+      if (fCampaign !== ALL && fCampaign !== NONE && m.campaignId !== fCampaign)
+        return false;
+      if (fAe !== ALL && m.aeName !== fAe) return false;
+      if (fPersona !== ALL && m.persona !== fPersona) return false;
+      if (cut !== null) {
+        const t = new Date(m.meetingDate ?? m.createdAt).getTime();
+        if (Number.isFinite(t) && t < cut) return false;
+      }
+      if (q) {
+        const hay = [m.clientCompany, m.aeName, m.clientContact, m.clientEmail]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [all, search, fCampaign, fAe, fPersona, bucket]);
+
+  const selected =
+    all.find((m) => m.id === selectedId) ?? filtered[0] ?? all[0] ?? null;
+
+  function select(id: string) {
+    setSelectedId(id);
+    setChanging(false);
+    setLinkValue('');
+  }
+  function doSync() {
+    sync.mutate(undefined, {
+      onSuccess: (r) =>
+        r.configured
+          ? toast.success(
+              `Synced ✓ · ${r.imported} new · ${r.attributed} attributed (scanned ${r.scanned})`,
+            )
+          : toast.error('n8n not configured (set N8N_API_URL / N8N_API_KEY).'),
+      onError: (e) => toast.error(e.message ?? 'Sync failed.'),
+    });
+  }
+  function doLink(mtg: MeetingDto, campaignId: string | null) {
+    link.mutate(
+      { id: mtg.id, campaignId },
+      {
+        onSuccess: () => {
+          toast.success(campaignId ? 'Linked to campaign.' : 'Cleared.');
+          setChanging(false);
+        },
+        onError: (e) => toast.error(e.message ?? 'Could not link.'),
+      },
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Sales Agent"
-        description="Meeting summaries from your Read AI agent, plus AI coaching on the Hormozi lens."
+        title="Sales"
+        description="Read AI meetings synced from n8n, attributed to the campaign that sourced them."
+        actions={
+          <Can permission="campaigns:write">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={doSync}
+              disabled={sync.isPending}
+            >
+              {sync.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <RefreshCw />
+              )}
+              {sync.isPending ? 'Syncing…' : 'Sync from n8n'}
+            </Button>
+          </Can>
+        }
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
-        {/* meeting list */}
-        <Card className="h-fit overflow-hidden p-0">
-          <div className="border-b px-4 py-3 text-[11px] uppercase tracking-wider text-muted-foreground">Recent meetings</div>
-          {MEETINGS.map((mt) => {
-            const t = tone(mt.chip);
-            return (
-              <button
-                key={mt.id}
-                onClick={() => setCurId(mt.id)}
-                className={cn(
-                  'flex w-full items-start gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50',
-                  mt.id === curId && 'bg-sky-500/10 shadow-[inset_3px_0_0_var(--color-sky-500,#0ea5e9)]',
-                )}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold">{mt.listTitle}</div>
-                  <div className="mt-0.5 text-[11.5px] text-muted-foreground">{mt.listMeta}</div>
-                </div>
-                <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-bold', CHIPBG[t])}>{mt.chip.toFixed(1)}</span>
-              </button>
-            );
-          })}
-        </Card>
+      {/* filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Search company, AE, email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-9 w-full sm:w-60"
+        />
+        <Select value={fCampaign} onValueChange={setFCampaign}>
+          <SelectTrigger className="h-9 w-[190px]">
+            <SelectValue placeholder="Campaign" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All campaigns</SelectItem>
+            {campList.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {campName(c)}
+              </SelectItem>
+            ))}
+            <SelectItem value={NONE}>Unattributed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={fAe} onValueChange={setFAe}>
+          <SelectTrigger className="h-9 w-[150px]">
+            <SelectValue placeholder="AE" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All AEs</SelectItem>
+            {aes.map((a) => (
+              <SelectItem key={a} value={a}>
+                {a}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={fPersona} onValueChange={setFPersona}>
+          <SelectTrigger className="h-9 w-[160px]">
+            <SelectValue placeholder="Persona" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All personas</SelectItem>
+            {personas.map((p) => (
+              <SelectItem key={p} value={p}>
+                {p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="inline-flex rounded-lg border bg-card p-0.5">
+          {(
+            [
+              [ALL, 'Any time'],
+              ['week', 'Week'],
+              ['month', 'Month'],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setBucket(k)}
+              className={cn(
+                'rounded-md px-3 py-1 text-sm font-medium transition-colors',
+                bucket === k
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        {/* detail */}
-        <Card className="overflow-hidden p-0">
-          <div className="border-b px-5 py-4">
-            <h2 className="flex flex-wrap items-center gap-2 text-[17px] font-semibold">
-              {m.title}
-              <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-bold text-violet-500">Hormozi lens</span>
-            </h2>
-            <div className="mt-1 text-[12.5px] text-muted-foreground">{m.metaLine}</div>
+      {meetings.isError ? (
+        <p className="text-sm text-destructive">
+          Could not load meetings: {meetings.error.message}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
+          {/* list */}
+          <Card className="self-start overflow-hidden">
+            <div className="border-b p-3 text-xs uppercase tracking-wider text-muted-foreground">
+              Meetings · {filtered.length}
+            </div>
+            <div className="max-h-[72vh] overflow-y-auto">
+              {meetings.isLoading ? (
+                <div className="flex flex-col gap-2 p-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : filtered.length === 0 ? (
+                <p className="p-6 text-center text-sm text-muted-foreground">
+                  {all.length === 0
+                    ? 'No meetings yet — press “Sync from n8n”.'
+                    : 'No meetings match.'}
+                </p>
+              ) : (
+                filtered.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => select(m.id)}
+                    className={cn(
+                      'flex w-full flex-col gap-1.5 border-b px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-muted/50',
+                      selected?.id === m.id && 'bg-muted',
+                    )}
+                  >
+                    <span className="truncate text-sm font-semibold">
+                      {m.clientCompany ?? 'Unknown'}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {m.aeName ?? '—'} → {m.clientContact ?? '—'} ·{' '}
+                      {m.meetingDate ?? formatDateTime(m.createdAt)}
+                    </span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {m.campaignId ? (
+                        <Badge className="gap-1 border-transparent bg-sky-500/10 text-[10px] font-medium text-sky-600 dark:text-sky-400">
+                          {m.campaignName ?? 'Campaign'}
+                        </Badge>
+                      ) : (
+                        <Badge className="gap-1 border-transparent bg-amber-500/10 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                          Unattributed
+                        </Badge>
+                      )}
+                      {typeof m.score === 'number' ? (
+                        <Badge
+                          variant="outline"
+                          className={cn('text-[10px]', scoreClass(m.score))}
+                        >
+                          {m.score}/100
+                        </Badge>
+                      ) : null}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </Card>
+
+          {/* detail */}
+          <Card>
+            <CardContent className="pt-6">
+              {meetings.isLoading ? (
+                <Skeleton className="h-80 w-full" />
+              ) : !selected ? (
+                <p className="text-sm text-muted-foreground">
+                  No meeting selected.
+                </p>
+              ) : (
+                <MeetingDetail
+                  m={selected}
+                  campList={campList}
+                  changing={changing}
+                  setChanging={setChanging}
+                  linkValue={linkValue}
+                  setLinkValue={setLinkValue}
+                  onLink={doLink}
+                  linking={link.isPending}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MeetingDetail({
+  m,
+  campList,
+  changing,
+  setChanging,
+  linkValue,
+  setLinkValue,
+  onLink,
+  linking,
+}: {
+  m: MeetingDto;
+  campList: { id: string; name?: string | null; project?: string | null }[];
+  changing: boolean;
+  setChanging: (v: boolean) => void;
+  linkValue: string;
+  setLinkValue: (v: string) => void;
+  onLink: (m: MeetingDto, campaignId: string | null) => void;
+  linking: boolean;
+}) {
+  const a = (m.analysis ?? null) as Analysis | null;
+  const showPicker = !m.campaignId || changing;
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">
+            {m.clientCompany ?? 'Unknown'}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {m.aeName ?? '—'} → {m.clientContact ?? '—'} ·{' '}
+            {m.meetingDate ?? formatDateTime(m.createdAt)}
+            {m.persona ? ` · ${m.persona}` : ''}
+          </p>
+        </div>
+        {m.docUrl ? (
+          <Button asChild variant="outline" size="sm">
+            <a href={m.docUrl} target="_blank" rel="noopener noreferrer">
+              Open doc <ExternalLink className="ml-1 size-3.5" />
+            </a>
+          </Button>
+        ) : null}
+      </div>
+
+      {/* attribution */}
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm',
+          m.campaignId
+            ? 'border-sky-500/30 bg-sky-500/5'
+            : 'border-amber-500/30 bg-amber-500/5',
+        )}
+      >
+        {showPicker ? (
+          <>
+            <span className="text-muted-foreground">
+              {m.campaignId
+                ? 'Change campaign:'
+                : `Unattributed${
+                    m.clientEmail ? ` — no lead matched ${m.clientEmail}.` : '.'
+                  }`}
+            </span>
+            <Select value={linkValue} onValueChange={setLinkValue}>
+              <SelectTrigger className="h-8 w-[200px]">
+                <SelectValue placeholder="Choose a campaign…" />
+              </SelectTrigger>
+              <SelectContent>
+                {campList.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name || c.project || '(campaign)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              disabled={!linkValue || linking}
+              onClick={() => onLink(m, linkValue)}
+            >
+              Link
+            </Button>
+            {m.campaignId ? (
+              <Button size="sm" variant="ghost" onClick={() => setChanging(false)}>
+                Cancel
+              </Button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <span className="text-muted-foreground">Campaign</span>
+            <span className="font-medium">{m.campaignName ?? 'Campaign'}</span>
+            {m.matchMethod ? (
+              <Badge
+                variant="outline"
+                className="text-[10px] text-muted-foreground"
+              >
+                matched by {m.matchMethod}
+              </Badge>
+            ) : null}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto h-7 text-xs"
+              onClick={() => {
+                setLinkValue(m.campaignId ?? '');
+                setChanging(true);
+              }}
+            >
+              Change
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* signals */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Signal k="AE" v={m.aeName ?? '—'} />
+        <Signal k="Client contact" v={m.clientContact ?? '—'} />
+        <Signal k="Prospect email" v={m.clientEmail ?? '—'} />
+        <Signal
+          k="Overall score"
+          v={typeof m.score === 'number' ? `${m.score}/100` : '—'}
+        />
+      </div>
+
+      {/* analysis */}
+      {!a ? (
+        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          No analysis on this meeting yet.
+        </p>
+      ) : (
+        <>
+          {a.overall_summary ? (
+            <div>
+              <SectionLabel>Summary</SectionLabel>
+              <p className="border-l-2 border-sky-500 pl-3 text-sm text-foreground/90">
+                {a.overall_summary}
+              </p>
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <ScoreBlock
+              title="AE performance"
+              overall={a.performance_score?.overall}
+              dims={PERF}
+              src={a.performance_score}
+            />
+            <ScoreBlock
+              title="Client analysis"
+              overall={a.client_analysis?.overall}
+              dims={CLIENT}
+              src={a.client_analysis}
+            />
           </div>
 
-          <Tabs defaultValue="summary" className="w-full gap-0">
-            <TabsList className="mx-4 mt-3">
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="coaching">Coaching</TabsTrigger>
-            </TabsList>
-
-            {/* SUMMARY */}
-            <TabsContent value="summary" className="px-5 py-4">
-              <SectionLabel>Meeting metadata</SectionLabel>
-              <div className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-1.5 text-[13px]">
-                {Object.entries(m.metadata).map(([k, v]) => (
-                  <div key={k} className="contents">
-                    <div className="text-muted-foreground">{k}</div>
-                    <div className={k === 'Flags' && v.includes('⚠') ? 'text-red-500' : ''}>{v}</div>
-                  </div>
-                ))}
-              </div>
-
-              <SectionLabel>Read AI signals</SectionLabel>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { v: m.signals.talk, k: 'Talk ratio · AE / client' },
-                  { v: m.signals.sentiment, k: 'Sentiment', tone: m.signals.sentTone },
-                  { v: m.signals.engagement, k: 'Engagement' },
-                  { v: m.signals.questions, k: 'Questions · AE / client' },
-                ].map((s) => (
-                  <div key={s.k} className="min-w-[120px] flex-1 rounded-lg border bg-muted/30 px-3 py-2">
-                    <div className={cn('text-[15px] font-bold', s.tone ? TEXT[s.tone] : '')}>{s.v}</div>
-                    <div className="text-[10.5px] uppercase tracking-wide text-muted-foreground">{s.k}</div>
-                  </div>
-                ))}
-              </div>
-
-              <SectionLabel>Executive summary</SectionLabel>
-              <p className="text-[13.5px] leading-relaxed text-foreground/90">{m.exec}</p>
-
-              <SectionLabel>Tender</SectionLabel>
-              <div className="rounded-xl border border-dashed border-sky-500/30 bg-sky-500/5 px-4 py-3 text-[13px]">
-                {m.tender.linked ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    🔗 Linked: <b>{m.tender.name}</b> <span className="text-muted-foreground">· {m.tender.meta}</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                    🔗 Not linked yet — AI suggests{' '}
-                    <b className="text-violet-500">{m.tender.bestName}</b>
-                    <span className="text-violet-500">· {m.tender.bestMatch} match</span>
-                    <span>· {m.tender.bestMeta}</span>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            {/* COACHING */}
-            <TabsContent value="coaching" className="px-5 py-4">
-              <div className="mb-2 flex items-center gap-6">
-                <Ring value={m.aeOverall} label="AE performance" />
-                <Ring value={m.clientOverall} label="Client analysis" />
-                <p className="max-w-[320px] text-[12.5px] text-muted-foreground">{m.headline}</p>
-              </div>
-
-              <SectionLabel>AE performance scores</SectionLabel>
-              {m.aeDims.map((d) => (
-                <DimBar key={d.name} d={d} withNote />
-              ))}
-
-              <SectionLabel>Client analysis</SectionLabel>
-              {m.clientDims.map((d) => (
-                <DimBar key={d.name} d={d} />
-              ))}
-
+          {a.strengths?.length ? (
+            <div>
               <SectionLabel>What worked</SectionLabel>
-              {m.worked.map((w, i) => (
-                <Collapsible
-                  key={w.n}
-                  open={i === 0}
-                  summary={
-                    <>
-                      <span className="text-muted-foreground">▸</span>
-                      {w.n} · {w.title}
-                      <span className="ml-auto rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-500">{w.method}</span>
-                    </>
-                  }
-                >
-                  <p className="my-1.5 border-l-2 pl-2.5 italic text-foreground/80">&ldquo;{w.quote}&rdquo;</p>
-                  <div className="text-[12.5px]"><b className="text-muted-foreground">Why:</b> {w.why}</div>
-                </Collapsible>
+              {a.strengths.map((s, i) => (
+                <Finding
+                  key={i}
+                  title={s.moment ?? '—'}
+                  timestamp={s.timestamp}
+                  pattern={s.methodology?.pattern}
+                  edge="good"
+                  rows={[['Why it worked', s.why_effective]]}
+                  quote={s.moment}
+                />
               ))}
+            </div>
+          ) : null}
 
+          {a.weaknesses?.length ? (
+            <div>
               <SectionLabel>What to improve</SectionLabel>
-              {m.improve.map((w, i) => (
-                <Collapsible
-                  key={w.n}
-                  open={i === 0}
-                  summary={
-                    <>
-                      <span className="text-muted-foreground">▸</span>
-                      {w.n} · {w.title}
-                      <span className="ml-auto rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-500">{w.method}</span>
-                    </>
-                  }
-                >
-                  {w.what ? <div className="text-[12.5px]"><b className="text-muted-foreground">What happened:</b> {w.what}</div> : null}
-                  <div className="text-[12.5px]"><b className="text-muted-foreground">Try:</b> {w.tryThis}</div>
-                </Collapsible>
+              {a.weaknesses.map((w, i) => (
+                <Finding
+                  key={i}
+                  title={w.area ?? '—'}
+                  timestamp={w.timestamp}
+                  pattern={w.methodology?.pattern}
+                  edge="improve"
+                  rows={[
+                    ['Observed', w.observation],
+                    ['Try', w.suggestion],
+                  ]}
+                  quote={w.evidence_quote}
+                />
               ))}
-
-              <div className="mt-3.5 text-[11.5px] text-muted-foreground">
-                AI confidence {m.confidence} · scored from the Read AI transcript
-              </div>
-            </TabsContent>
-          </Tabs>
-        </Card>
-      </div>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
+  );
+}
+
+function Signal({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/30 p-2.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {k}
+      </div>
+      <div className="truncate text-sm font-medium">{v}</div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
+function ScoreBlock({
+  title,
+  overall,
+  dims,
+  src,
+}: {
+  title: string;
+  overall?: { score?: number | null };
+  dims: [string, string][];
+  src?: Record<string, { score?: number | null; rationale?: string | null }>;
+}) {
+  const ov = typeof overall?.score === 'number' ? overall.score : null;
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-sm font-semibold">{title}</span>
+        {ov !== null ? (
+          <span className={cn('text-xl font-bold', scoreClass(ov))}>
+            {ov}
+            <span className="text-xs text-muted-foreground">/100</span>
+          </span>
+        ) : null}
+      </div>
+      {dims.map(([key, label]) => {
+        const s = src?.[key]?.score;
+        if (typeof s !== 'number') return null;
+        return (
+          <div key={key} className="mb-2.5">
+            <div className="mb-1 flex justify-between text-xs">
+              <span>{label}</span>
+              <span className={cn('font-semibold', scoreClass(s))}>{s}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <span
+                className={cn('block h-full rounded-full', barClass(s))}
+                style={{ width: `${s}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Finding({
+  title,
+  timestamp,
+  pattern,
+  edge,
+  rows,
+  quote,
+}: {
+  title: string;
+  timestamp?: string;
+  pattern?: string;
+  edge: 'good' | 'improve';
+  rows: [string, string | undefined][];
+  quote?: string;
+}) {
+  return (
+    <details
+      className={cn(
+        'group mb-2 overflow-hidden rounded-lg border bg-muted/20 [&_summary::-webkit-details-marker]:hidden',
+        edge === 'good'
+          ? 'border-l-2 border-l-emerald-500'
+          : 'border-l-2 border-l-amber-500',
+      )}
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium">
+        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+        <span className="truncate">{title}</span>
+        {timestamp ? (
+          <span className="text-xs text-muted-foreground">{timestamp}</span>
+        ) : null}
+        {pattern ? (
+          <span className="ml-auto shrink-0 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+            {pattern}
+          </span>
+        ) : null}
+      </summary>
+      <div className="border-t px-3 py-3 pl-9">
+        {quote ? (
+          <p className="mb-1.5 border-l-2 pl-2.5 text-xs italic text-foreground/80">
+            “{quote}”
+          </p>
+        ) : null}
+        {rows
+          .filter(([, v]) => v)
+          .map(([label, v]) => (
+            <p key={label} className="text-xs">
+              <span className="text-muted-foreground">{label}:</span> {v}
+            </p>
+          ))}
+      </div>
+    </details>
   );
 }

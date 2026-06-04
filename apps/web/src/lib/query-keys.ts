@@ -64,6 +64,29 @@ export const queryKeys = {
       ['arsenal', 'report', period, campaignId ?? 'all'] as const,
   },
 
+  // Sales Agent: synced, campaign-attributed meetings.
+  meetings: {
+    all: ['meetings'] as const,
+    list: (
+      f: {
+        campaignId?: string;
+        ae?: string;
+        persona?: string;
+        search?: string;
+        bucket?: string;
+      } = {},
+    ) =>
+      [
+        'meetings',
+        'list',
+        f.campaignId ?? 'all',
+        f.ae ?? 'all',
+        f.persona ?? 'all',
+        f.search ?? '',
+        f.bucket ?? 'all',
+      ] as const,
+  },
+
   // Key Account: hot-lead CRM.
   leads: {
     all: ['leads'] as const,

@@ -609,6 +609,50 @@ export const UserStatsDto = z.object({
 });
 export type UserStatsDto = z.infer<typeof UserStatsDto>;
 
+// ---- Sales Agent meetings (Read.ai analyses synced from n8n) ----
+// How a meeting's campaign was resolved.
+export const MeetingMatchMethod = z.enum(['email', 'domain', 'manual']);
+export type MeetingMatchMethod = z.infer<typeof MeetingMatchMethod>;
+
+// A synced, analyzed meeting. `analysis` is the workflow's Sales Analysis Schema
+// JSON, returned verbatim (unknown) so LLM-shape drift never breaks the contract.
+export const MeetingDto = z.object({
+  id: z.string().uuid(),
+  sessionId: z.string().nullable(),
+  title: z.string().nullable(),
+  clientCompany: z.string().nullable(),
+  aeName: z.string().nullable(),
+  clientContact: z.string().nullable(),
+  clientEmail: z.string().nullable(),
+  meetingDate: z.string().nullable(),
+  persona: z.string().nullable(),
+  analysis: z.unknown().nullable(),
+  docUrl: z.string().nullable(),
+  score: z.number().nullable(),
+  campaignId: z.string().uuid().nullable(),
+  campaignName: z.string().nullable(),
+  leadId: z.string().uuid().nullable(),
+  matchMethod: MeetingMatchMethod.nullable(),
+  createdAt: z.string(),
+});
+export type MeetingDto = z.infer<typeof MeetingDto>;
+export const MeetingListDto = z.array(MeetingDto);
+
+// PATCH /sales/meetings/:id — manual campaign link (null clears it).
+export const LinkMeetingDto = z.object({
+  campaignId: z.string().uuid().nullable(),
+});
+export type LinkMeetingDto = z.infer<typeof LinkMeetingDto>;
+
+// POST /sales/meetings/sync — backfill from the n8n Sales Agent workflow.
+export const MeetingSyncResultDto = z.object({
+  configured: z.boolean(),
+  scanned: z.number(),
+  imported: z.number(),
+  attributed: z.number(),
+});
+export type MeetingSyncResultDto = z.infer<typeof MeetingSyncResultDto>;
+
 // ---- Tender assignment (manual L5-PIC assign) ----
 // Body for POST /tenders/:id/assign. reason is optional context (<= 500 chars).
 export const AssignTenderDto = z.object({

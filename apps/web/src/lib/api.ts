@@ -4,6 +4,10 @@ import {
   CreateUserDto,
   SetPasswordDto,
   UserStatsDto,
+  MeetingDto,
+  MeetingListDto,
+  MeetingSyncResultDto,
+  LinkMeetingDto,
   ApprovalRequestDto,
   ArsenalBackfillResultDto,
   ArsenalExecutionsDto,
@@ -535,6 +539,44 @@ export const api = {
         method: 'PUT',
         body: UpdateArsenalSettingsDto.parse(input),
         schema: ArsenalSettingsDto,
+      }),
+  },
+
+  // ---- Sales Agent: meetings (Read.ai analyses synced from n8n) ----
+  meetings: {
+    list: (
+      params: {
+        campaignId?: string;
+        ae?: string;
+        persona?: string;
+        search?: string;
+        bucket?: string;
+      } = {},
+      signal?: AbortSignal,
+    ) => {
+      const q = new URLSearchParams();
+      for (const k of ['campaignId', 'ae', 'persona', 'search', 'bucket'] as const) {
+        const v = params[k];
+        if (v) q.set(k, v);
+      }
+      const qs = q.toString();
+      return request<MeetingDto[]>(`/sales/meetings${qs ? `?${qs}` : ''}`, {
+        schema: MeetingListDto,
+        signal,
+      });
+    },
+
+    sync: () =>
+      request<MeetingSyncResultDto>('/sales/meetings/sync', {
+        method: 'POST',
+        schema: MeetingSyncResultDto,
+      }),
+
+    link: (id: string, campaignId: string | null) =>
+      request<MeetingDto>(`/sales/meetings/${id}`, {
+        method: 'PATCH',
+        body: LinkMeetingDto.parse({ campaignId }),
+        schema: MeetingDto,
       }),
   },
 

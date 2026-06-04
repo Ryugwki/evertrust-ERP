@@ -1,0 +1,75 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
+import type { Request } from 'express';
+import type { MeetingDto, MeetingSyncResultDto } from '@evertrust/shared';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { OrgId } from '../common/tenant';
+import { setAuditContext } from '../common/audit-context';
+import { MeetingsService } from './meetings.service';
+import { LinkMeetingBodyDto } from './meetings.dto';
+
+// Sales-Agent meetings (Read.ai analyses synced from n8n, campaign-attributed).
+// Read = campaigns:read; sync + manual link = campaigns:write. Tenant-scoped.
+@Controller('sales/meetings')
+export class MeetingsController {
+  constructor(private readonly meetings: MeetingsService) {}
+
+  @RequirePermissions('campaigns:read')
+  @Get()
+  list(
+    @OrgId() orgId: string,
+    @Query('campaignId') campaignId?: string,
+    @Query('ae') ae?: string,
+    @Query('persona') persona?: string,
+    @Query('search') search?: string,
+    @Query('bucket') bucket?: string,
+  ): Promise<MeetingDto[]> {
+    return this.meetings.list(orgId, {
+      campaignId,
+      ae,
+      persona,
+      search,
+      bucket,
+    });
+  }
+
+  // Pull recent Sales-Agent executions from n8n → upsert meetings, resolving each
+  // meeting's campaign by prospect email → lead. AUDITED.
+  @RequirePermissions('campaigns:write')
+  @Post('sync')
+  async sync(
+    @OrgId() orgId: string,
+    @Req() req: Request,
+  ): Promise<MeetingSyncResultDto> {
+    const result = await this.meetings.sync(orgId);
+    setAuditContext(req, { entity: 'meetings', action: 'SYNC', after: result });
+    return result;
+  }
+
+  // Manually link a meeting to a campaign (or clear it). AUDITED.
+  @RequirePermissions('campaigns:write')
+  @Patch(':id')
+  async link(
+    @OrgId() orgId: string,
+    @Param('id') id: string,
+    @Body() body: LinkMeetingBodyDto,
+    @Req() req: Request,
+  ): Promise<MeetingDto> {
+    const m = await this.meetings.link(orgId, id, body.campaignId);
+    setAuditContext(req, {
+      entity: 'meetings',
+      entityId: id,
+      action: 'UPDATE',
+      after: { campaignId: m.campaignId, matchMethod: m.matchMethod },
+    });
+    return m;
+  }
+}
