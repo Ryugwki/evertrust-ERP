@@ -35,15 +35,17 @@ export function SidebarNav() {
     <div className="flex h-full flex-col overflow-y-auto">
       <nav className="flex shrink-0 flex-col gap-5 p-3" aria-label="Primary">
         {sections.map((section, i) => (
-          <div key={section.label ?? `top-${i}`} className="flex flex-col gap-1">
+          <div key={section.label ?? `top-${i}`} className="flex flex-col gap-1.5">
             {section.label ? (
-              <p className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              <p className="px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                 {section.label}
               </p>
             ) : null}
-            {section.items.map((item) => (
-              <NavLink key={item.href} item={item} pathname={pathname} />
-            ))}
+            <div className="flex flex-col gap-1 rounded-xl border bg-card/30 p-1.5">
+              {section.items.map((item) => (
+                <NavLink key={item.href} item={item} pathname={pathname} />
+              ))}
+            </div>
           </div>
         ))}
       </nav>
