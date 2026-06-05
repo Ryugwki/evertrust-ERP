@@ -1,6 +1,7 @@
 'use client';
 
-import { Building2, LogOut } from 'lucide-react';
+import Link from 'next/link';
+import { Building2, LogOut, UserRound } from 'lucide-react';
 import { DEPARTMENT_LABELS, ROLE_LABELS, type MeDto } from '@evertrust/shared';
 import { useLogout } from '@/hooks/use-auth';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -61,6 +62,12 @@ export function UserMenu({ user }: { user: MeDto }) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
+          <DropdownMenuItem asChild>
+            <Link href={`/users/${user.id}`}>
+              <UserRound />
+              Profile
+            </Link>
+          </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
             disabled={logout.isPending}
