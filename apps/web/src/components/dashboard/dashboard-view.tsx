@@ -2,19 +2,40 @@
 
 import {
   AlarmClock,
+  Briefcase,
+  CalendarCheck,
+  Contact,
   Crosshair,
   FileText,
   Layers,
-  ShieldCheck,
+  Trophy,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  LabelList,
+} from 'recharts';
 import {
   DEPARTMENT_LABELS,
   ROLE_LABELS,
   type TenderDto,
+  type TenderStatus,
+  type CampaignStatus,
 } from '@evertrust/shared';
 import { useMe } from '@/hooks/use-auth';
 import { useTenders, useDeadlineRisk } from '@/hooks/use-tenders';
 import { useCampaigns } from '@/hooks/use-campaigns';
+import { useMeetings } from '@/hooks/use-meetings';
+import { useLeads } from '@/hooks/use-leads';
+import { useCustomers } from '@/hooks/use-customers';
 import { AppShell } from '@/components/shell/app-shell';
 import { Can } from '@/components/auth/can';
 import { LogoutButton } from '@/components/auth/logout-button';
@@ -30,21 +51,57 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common/page-header';
 import { StatTile } from '@/components/common/stat-tile';
 import { DeadlineAtRiskCard } from '@/components/tenders/deadline-at-risk-card';
-import { UpdateNameForm } from './update-name-form';
 
-// A tender is "open" until it reaches a terminal/submitted state — the SAME
-// closed-set computeDeadlineRisk uses, so "active" here can't drift from what the
-// deadline-risk roll-up considers still in play.
 function isOpen(t: TenderDto): boolean {
   return (
     t.status !== 'SUBMITTED' && t.status !== 'AWARDED' && t.status !== 'LOST'
   );
 }
 
-// Dashboard content inside the shared AppShell (which owns the topbar, the left
-// nav rail, and the stale-session -> logout handling). This view is the landing
-// zone: a greeting masthead, a KPI row computed from the hooks the modules
-// already use, then the operational frame (deadline-at-risk) + the profile form.
+// Tender lifecycle stages (label + colour) — the SAME closed set as the shared
+// TenderStatus enum, so the pipeline chart can't drift from the state machine.
+const TENDER_STAGES: ReadonlyArray<[TenderStatus, string, string]> = [
+  ['NOT_STARTED', 'Not started', '#64748b'],
+  ['PIC_PRICING', 'PIC pricing', '#38bdf8'],
+  ['CUSTOMER_PRICING', 'Cust. pricing', '#22d3ee'],
+  ['DOCUMENTS', 'Documents', '#a78bfa'],
+  ['SUBMITTED', 'Submitted', '#34d399'],
+  ['AWARDED', 'Awarded', '#fbbf24'],
+  ['LOST', 'Lost', '#f87171'],
+];
+const CAMPAIGN_STATES: ReadonlyArray<[CampaignStatus, string, string]> = [
+  ['DEPLOYED', 'Deployed', '#34d399'],
+  ['DRAFT', 'Draft', '#64748b'],
+  ['FAILED', 'Failed', '#f87171'],
+];
+
+// Dark tooltip matching the app theme.
+function ChartTip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number; payload?: { fill?: string } }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
+      {label ? <div className="text-muted-foreground">{label}</div> : null}
+      {payload.map((p, i) => (
+        <div key={i} className="font-medium">
+          {p.name}: {p.value}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The landing cockpit: a greeting, a live KPI row, the acquisition→pipeline
+// charts, and the deadline-at-risk frame. Every number comes from a hook a module
+// already fetches — no decorative/fabricated values — and every tile/chart is
+// gated by the same read permission as its source (the API 403s otherwise).
 export function DashboardView() {
   const { data: user, isLoading, isError, error } = useMe();
 
@@ -79,7 +136,7 @@ export function DashboardView() {
               title={`Welcome back, ${user.name.split(/\s+/)[0] || user.name}`}
               description={
                 <>
-                  Your Evertrust operations workspace
+                  Acquisition → pipeline → won, at a glance
                   {user.organizationName ? (
                     <>
                       {' · '}
@@ -102,59 +159,20 @@ export function DashboardView() {
               }
             />
 
-            {/* KPI row: live operational counts from the hooks the Tenders +
-                Growth modules already fetch. Each tile is gated by the same read
-                permission as its source module (the API 403s otherwise), so the
-                row only shows what this user is allowed to see. */}
             <StatRow />
 
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Phase 6 (R31): the "deadline at risk" operational frame — open
-                  tenders inside the T-2 window, most urgent first. Gated by
-                  tenders:read since it reads tender data. */}
+            <div className="grid gap-6 lg:grid-cols-3">
               <Can permission="tenders:read">
-                <DeadlineAtRiskCard />
+                <TenderPipelineCard />
               </Can>
-
-              <UpdateNameForm user={user} />
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Account</CardTitle>
-                  <CardDescription>{user.email}</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  You are authenticated as{' '}
-                  <span className="font-medium text-foreground">
-                    {ROLE_LABELS[user.role]}
-                  </span>
-                  . This base shell is reused by every ERP module.
-                </CardContent>
-              </Card>
-
-              {/* RBAC demo: this admin-only card renders only when the user's role
-                  grants `admin:config` (i.e. L1/L2). The <Can> boundary gates the
-                  UI; the API enforces the same permission server-side. */}
-              <Can permission="admin:config">
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShieldCheck className="size-4 text-amber-500" />
-                      Administration
-                      <Badge variant="outline">L1 / L2</Badge>
-                    </CardTitle>
-                    <CardDescription>
-                      Organization configuration and platform settings.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground">
-                    Only roles with{' '}
-                    <code className="font-mono">admin:config</code> see this
-                    section. Future config controls live here.
-                  </CardContent>
-                </Card>
+              <Can permission="campaigns:read">
+                <CampaignStatusCard />
               </Can>
             </div>
+
+            <Can permission="tenders:read">
+              <DeadlineAtRiskCard />
+            </Can>
           </>
         ) : null}
       </div>
@@ -162,59 +180,82 @@ export function DashboardView() {
   );
 }
 
-// The KPI tiles. Hooks are called unconditionally (rules-of-hooks); each TILE is
-// wrapped in <Can> so it renders only when the user can read that resource. A
-// per-tile Skeleton holds the value until its query resolves (mirrors the Growth
-// Engine pattern). All counts come from already-fetched data — no decorative
-// endpoints.
+// ---- KPI tiles (all real counts) ----
 function StatRow() {
   const tenders = useTenders();
   const atRisk = useDeadlineRisk();
   const campaigns = useCampaigns();
+  const meetings = useMeetings();
+  const leads = useLeads();
+  const customers = useCustomers();
 
   const tenderRows = tenders.data ?? [];
-  const totalTenders = tenderRows.length;
   const openTenders = tenderRows.filter(isOpen).length;
-
-  const riskRows = atRisk.data ?? [];
-  const atRiskCount = riskRows.length;
-  const overdueCount = riskRows.filter((r) => r.risk.level === 'OVERDUE').length;
-
-  const deployedCampaigns = (campaigns.data ?? []).filter(
+  const atRiskCount = atRisk.data?.length ?? 0;
+  const overdue =
+    atRisk.data?.filter((r) => r.risk.level === 'OVERDUE').length ?? 0;
+  const deployed = (campaigns.data ?? []).filter(
     (c) => c.status === 'DEPLOYED',
   ).length;
-  const totalCampaigns = campaigns.data?.length ?? 0;
 
-  // Render a Skeleton in the value slot until the backing query settles.
   const num = (loading: boolean, value: number) =>
     loading ? <Skeleton className="h-6 w-8" /> : value;
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      <Can permission="campaigns:read">
+        <StatTile
+          label="Campaigns"
+          value={num(campaigns.isLoading, deployed)}
+          hint={
+            campaigns.isError
+              ? 'Could not load'
+              : `${campaigns.data?.length ?? 0} total · ${deployed} live`
+          }
+          accent="bg-violet-400"
+          icon={<Crosshair className="size-4" />}
+        />
+      </Can>
+      <Can permission="campaigns:read">
+        <StatTile
+          label="Hot leads"
+          value={num(leads.isLoading, leads.data?.length ?? 0)}
+          hint={leads.isError ? 'Could not load' : 'Interested in pipeline'}
+          accent="bg-sky-400"
+          icon={<Contact className="size-4" />}
+        />
+      </Can>
+      <Can permission="campaigns:read">
+        <StatTile
+          label="Meetings"
+          value={num(meetings.isLoading, meetings.data?.length ?? 0)}
+          hint={meetings.isError ? 'Could not load' : 'Analyzed calls'}
+          accent="bg-amber-400"
+          icon={<CalendarCheck className="size-4" />}
+        />
+      </Can>
+      <Can permission="campaigns:read">
+        <StatTile
+          label="Customers"
+          value={num(customers.isLoading, customers.data?.length ?? 0)}
+          hint={customers.isError ? 'Could not load' : 'Won accounts'}
+          accent="bg-emerald-400"
+          icon={<Trophy className="size-4" />}
+        />
+      </Can>
       <Can permission="tenders:read">
         <StatTile
-          label="Tenders"
-          value={num(tenders.isLoading, totalTenders)}
+          label="Open tenders"
+          value={num(tenders.isLoading, openTenders)}
           hint={
             tenders.isError
               ? 'Could not load'
-              : `${openTenders} active right now`
+              : `${tenderRows.length} total`
           }
           accent="bg-sky-400"
           icon={<FileText className="size-4" />}
         />
       </Can>
-
-      <Can permission="tenders:read">
-        <StatTile
-          label="Active"
-          value={num(tenders.isLoading, openTenders)}
-          hint="Open — not yet submitted or closed"
-          accent="bg-emerald-400"
-          icon={<Layers className="size-4" />}
-        />
-      </Can>
-
       <Can permission="tenders:read">
         <StatTile
           label="At deadline risk"
@@ -222,28 +263,159 @@ function StatRow() {
           hint={
             atRisk.isError
               ? 'Could not load'
-              : overdueCount > 0
-                ? `${overdueCount} overdue`
+              : overdue > 0
+                ? `${overdue} overdue`
                 : atRiskCount > 0
-                  ? 'Within the T-2 window'
+                  ? 'Within T-2 window'
                   : 'All on track'
           }
           accent={atRiskCount > 0 ? 'bg-orange-400' : 'bg-emerald-400'}
           icon={<AlarmClock className="size-4" />}
         />
       </Can>
+    </div>
+  );
+}
 
-      <Can permission="campaigns:read">
-        <StatTile
-          label="Campaigns deployed"
-          value={num(campaigns.isLoading, deployedCampaigns)}
-          hint={
-            campaigns.isError ? 'Could not load' : `${totalCampaigns} launched`
-          }
-          accent="bg-violet-400"
-          icon={<Crosshair className="size-4" />}
-        />
-      </Can>
+// ---- Tender pipeline (bar, real) ----
+function TenderPipelineCard() {
+  const tenders = useTenders();
+  const rows = tenders.data ?? [];
+  const data = TENDER_STAGES.map(([s, label, fill]) => ({
+    stage: label,
+    n: rows.filter((t) => t.status === s).length,
+    fill,
+  }));
+  const open = rows.filter(isOpen).length;
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Layers className="size-4 text-muted-foreground" /> Tender pipeline
+        </CardTitle>
+        <CardDescription>{open} open · by stage</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {tenders.isLoading ? (
+          <Skeleton className="h-[220px] w-full" />
+        ) : rows.length === 0 ? (
+          <EmptyChart label="No tenders yet" />
+        ) : (
+          <div className="h-[220px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid
+                  vertical={false}
+                  stroke="var(--border)"
+                />
+                <XAxis
+                  dataKey="stage"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: 'var(--muted-foreground)', fontSize: 10 }}
+                  interval={0}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={28}
+                  allowDecimals={false}
+                  tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
+                />
+                <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(255,255,255,.03)' }} />
+                <Bar dataKey="n" name="Tenders" radius={[6, 6, 0, 0]} maxBarSize={44}>
+                  {data.map((d, i) => (
+                    <Cell key={i} fill={d.fill} />
+                  ))}
+                  <LabelList
+                    dataKey="n"
+                    position="top"
+                    fill="var(--muted-foreground)"
+                    fontSize={11}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Campaign status (donut, real) ----
+function CampaignStatusCard() {
+  const campaigns = useCampaigns();
+  const rows = campaigns.data ?? [];
+  const data = CAMPAIGN_STATES.map(([s, label, fill]) => ({
+    name: label,
+    value: rows.filter((c) => c.status === s).length,
+    fill,
+  })).filter((d) => d.value > 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Briefcase className="size-4 text-muted-foreground" /> Campaigns
+        </CardTitle>
+        <CardDescription>{rows.length} total · by status</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {campaigns.isLoading ? (
+          <Skeleton className="h-[220px] w-full" />
+        ) : rows.length === 0 ? (
+          <EmptyChart label="No campaigns yet" />
+        ) : (
+          <div className="flex h-[220px] items-center gap-3">
+            <div className="h-full flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={78}
+                    paddingAngle={2}
+                    stroke="none"
+                  >
+                    {data.map((d, i) => (
+                      <Cell key={i} fill={d.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<ChartTip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-col gap-1.5 pr-2">
+              {data.map((d) => (
+                <div key={d.name} className="flex items-center gap-2 text-xs">
+                  <span
+                    className="size-2.5 rounded-sm"
+                    style={{ background: d.fill }}
+                  />
+                  <span className="text-muted-foreground">{d.name}</span>
+                  <span className="ml-auto font-semibold tabular-nums">
+                    {d.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyChart({ label }: { label: string }) {
+  return (
+    <div className="flex h-[220px] items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+      {label}
     </div>
   );
 }
@@ -255,31 +427,14 @@ function DashboardSkeleton() {
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-80" />
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-[92px] w-full rounded-lg" />
         ))}
       </div>
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader className="gap-2">
-            <Skeleton className="h-5 w-48" />
-            <Skeleton className="h-4 w-32" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-4 w-full" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="gap-2">
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="h-4 w-56" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-28 self-end" />
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Skeleton className="h-[300px] w-full rounded-lg lg:col-span-2" />
+        <Skeleton className="h-[300px] w-full rounded-lg" />
       </div>
     </>
   );
