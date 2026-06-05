@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   MarketingDraftListDto,
+  ScanLeadsResultDto,
   SendDraftDto,
   SendDraftResultDto,
 } from '@evertrust/shared';
@@ -27,5 +28,22 @@ export function useSendDraft() {
     mutationFn: (input) => api.marketing.sendDraft(input),
     onSuccess: () =>
       void qc.invalidateQueries({ queryKey: queryKeys.marketing.all }),
+  });
+}
+
+// "Sync from leads" — kick the RAG Agent to scan every campaign's leads sheet
+// for unsure replies and draft them. Runs async, so refetch the queue now and
+// again a few seconds later as drafts land.
+export function useScanLeads() {
+  const qc = useQueryClient();
+  return useMutation<ScanLeadsResultDto, ApiError, void>({
+    mutationFn: () => api.marketing.scanLeads(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.marketing.all });
+      setTimeout(
+        () => void qc.invalidateQueries({ queryKey: queryKeys.marketing.all }),
+        6000,
+      );
+    },
   });
 }

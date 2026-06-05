@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import type {
   MarketingDraftListDto,
+  ScanLeadsResultDto,
   SendDraftResultDto,
 } from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
@@ -34,6 +35,20 @@ export class MarketingController {
       entityId: r.draftId ?? body.draftId,
       action: 'SEND',
       after: { to: r.to, status: r.status, sentMessageId: r.sentMessageId },
+    });
+    return r;
+  }
+
+  // "Sync from leads" — trigger the RAG Agent to scan every campaign's leads
+  // sheet for Status=unsure rows and draft replies (runs async). AUDITED.
+  @RequirePermissions('campaigns:write')
+  @Post('drafts/scan')
+  async scan(@Req() req: Request): Promise<ScanLeadsResultDto> {
+    const r = await this.marketing.scanLeads();
+    setAuditContext(req, {
+      entity: 'marketing_drafts',
+      action: 'SCAN',
+      after: { ok: r.ok },
     });
     return r;
   }

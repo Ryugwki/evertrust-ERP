@@ -732,6 +732,15 @@ export const SendDraftResultDto = z.object({
 });
 export type SendDraftResultDto = z.infer<typeof SendDraftResultDto>;
 
+// POST /marketing/drafts/scan — "Sync from leads": fire the RAG Agent's
+// scan-all-campaign-leads webhook (erp-rag-scan). It runs async (drafts appear
+// in the queue shortly), so this just reports that the scan was kicked off.
+export const ScanLeadsResultDto = z.object({
+  ok: z.boolean(),
+  message: z.string(),
+});
+export type ScanLeadsResultDto = z.infer<typeof ScanLeadsResultDto>;
+
 // NOTE: meetings enter the ERP ONLY via "Sync from Drive" (mirror the folder
 // Docs). There is intentionally no n8n→ERP push/ingest of meetings — the n8n
 // workflow runs analyses and writes Drive artifacts; it never inserts ERP rows.

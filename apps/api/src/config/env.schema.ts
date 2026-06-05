@@ -95,6 +95,7 @@ export const EnvSchema = z.object({
   // N8N_API_URL is set, Draft Review works without setting these.
   N8N_RAG_DRAFTS_WEBHOOK_URL: z.string().default(''),
   N8N_RAG_SEND_WEBHOOK_URL: z.string().default(''),
+  N8N_RAG_SCAN_WEBHOOK_URL: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -108,4 +108,27 @@ describe('MarketingService', () => {
       service.send({ draftId: 'r1', to: 'a@b.com', subject: '', body: 'x' }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
+
+  it('scanLeads POSTs the erp-rag-scan webhook and confirms it started', async () => {
+    const service = svc();
+    let calledUrl = '';
+    let method = '';
+    global.fetch = (async (url: string, init: RequestInit) => {
+      calledUrl = url;
+      method = String(init.method);
+      return { ok: true, status: 200, json: async () => ({ message: 'Workflow was started' }) };
+    }) as unknown as typeof fetch;
+
+    const r = await service.scanLeads();
+    expect(calledUrl).toBe('https://n8n.test/webhook/erp-rag-scan');
+    expect(method).toBe('POST');
+    expect(r.ok).toBe(true);
+  });
+
+  it('scanLeads throws ServiceUnavailable when N8N_API_URL is unset', async () => {
+    const service = svc('');
+    await expect(service.scanLeads()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
 });

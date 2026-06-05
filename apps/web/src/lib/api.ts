@@ -39,6 +39,7 @@ import {
   MarketingDraftListDto,
   MarketingReportDto,
   MarketingReportPeriod,
+  ScanLeadsResultDto,
   SendDraftDto,
   SendDraftResultDto,
   MeDto,
@@ -619,6 +620,11 @@ export const api = {
         method: 'POST',
         body: SendDraftDto.parse(input),
         schema: SendDraftResultDto,
+      }),
+    scanLeads: () =>
+      request<z.infer<typeof ScanLeadsResultDto>>('/marketing/drafts/scan', {
+        method: 'POST',
+        schema: ScanLeadsResultDto,
       }),
   },
 
