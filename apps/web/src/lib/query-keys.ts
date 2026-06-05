@@ -50,6 +50,7 @@ export const queryKeys = {
     all: ['campaigns'] as const,
     list: () => ['campaigns', 'list'] as const,
     detail: (id: string) => ['campaigns', 'detail', id] as const,
+    files: (id: string) => ['campaigns', 'files', id] as const,
   },
 
   // Arsenal: ERP→n8n stage trigger runs + editable settings.

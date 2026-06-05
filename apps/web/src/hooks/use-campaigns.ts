@@ -3,11 +3,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CampaignDto,
+  CampaignFilesDto,
   CampaignSyncResultDto,
   CreateCampaignDto,
 } from '@evertrust/shared';
 import { ApiError, api } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
+
+// Files in a campaign's Drive folder — fetched lazily (only when the Details
+// dialog is open, via `enabled`).
+export function useCampaignFiles(id: string, enabled: boolean) {
+  return useQuery<CampaignFilesDto, ApiError>({
+    queryKey: queryKeys.campaigns.files(id),
+    queryFn: ({ signal }) => api.campaigns.files(id, signal),
+    enabled,
+    staleTime: 30_000,
+  });
+}
 
 // Growth Engine hooks. The list is the launched-campaign history; the create
 // mutation is the AIM "Lock & Load" (it persists the campaign AND fires the AIM

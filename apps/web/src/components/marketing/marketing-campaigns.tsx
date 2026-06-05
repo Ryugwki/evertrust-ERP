@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronDown, ExternalLink } from 'lucide-react';
+import { ChevronDown, ExternalLink, Files } from 'lucide-react';
 import {
   ARSENAL_STAGE_META,
   isArsenalRunOk,
@@ -9,11 +9,26 @@ import {
   type CampaignDto,
   type CampaignStatus,
 } from '@evertrust/shared';
-import { useCampaigns } from '@/hooks/use-campaigns';
+import { useCampaigns, useCampaignFiles } from '@/hooks/use-campaigns';
 import { useArsenalRuns, useMarketingReport } from '@/hooks/use-arsenal';
 import { Can } from '@/components/auth/can';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/arsenal-sequence';
 import { SyncDriveButton } from '@/components/growth/sync-drive-button';
@@ -160,6 +175,7 @@ function CampaignCard({
     { k: 'Mtg', v: cf?.meetingsBooked ?? null },
   ];
   const shown = runs.slice(0, 8);
+  const [filesOpen, setFilesOpen] = useState(false);
 
   return (
     <li className="overflow-hidden rounded-xl border bg-card">
@@ -208,6 +224,12 @@ function CampaignCard({
               size="sm"
             />
           </Can>
+          {c.driveFolderId ? (
+            <Button variant="outline" size="sm" onClick={() => setFilesOpen(true)}>
+              <Files />
+              Details
+            </Button>
+          ) : null}
           {c.driveFolderUrl ? (
             <Button asChild variant="outline" size="sm">
               <a href={c.driveFolderUrl} target="_blank" rel="noreferrer">
@@ -256,6 +278,119 @@ function CampaignCard({
           )}
         </div>
       ) : null}
+
+      <CampaignFilesDialog
+        campaign={c}
+        open={filesOpen}
+        onOpenChange={setFilesOpen}
+      />
     </li>
+  );
+}
+
+// Friendly file-type label from a Drive mimeType.
+function fileType(m: string | null): string {
+  if (!m) return 'File';
+  if (m.includes('spreadsheet')) return 'Sheet';
+  if (m.includes('document')) return 'Doc';
+  if (m.includes('presentation')) return 'Slides';
+  if (m.includes('folder')) return 'Folder';
+  if (m.includes('pdf')) return 'PDF';
+  if (m.startsWith('text/')) return 'Text';
+  if (m.startsWith('image/')) return 'Image';
+  return m.split('/').pop() || 'File';
+}
+
+// Details dialog: a table of every file in the campaign's Drive folder; each row
+// opens that file in Drive. Files are fetched lazily (only while the dialog is open).
+function CampaignFilesDialog({
+  campaign,
+  open,
+  onOpenChange,
+}: {
+  campaign: CampaignDto;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const q = useCampaignFiles(campaign.id, open);
+  const files = q.data?.files ?? [];
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{campaign.name || campaign.project} — files</DialogTitle>
+          <DialogDescription>
+            Everything in this campaign&rsquo;s Drive folder. Click a row to open
+            the file.
+          </DialogDescription>
+        </DialogHeader>
+        {q.isLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : q.isError ? (
+          <p className="text-sm text-destructive">
+            Could not load files: {q.error.message}
+          </p>
+        ) : q.data && !q.data.configured ? (
+          <p className="text-sm text-muted-foreground">
+            File listing isn&rsquo;t connected yet (set <code>N8N_API_URL</code> on
+            the API).
+          </p>
+        ) : files.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No files in this campaign&rsquo;s folder yet.
+          </p>
+        ) : (
+          <div className="max-h-[60vh] overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="w-20">Type</TableHead>
+                  <TableHead className="w-28">Modified</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {files.map((f) => {
+                  const cells = (
+                    <>
+                      <TableCell className="font-medium">{f.name}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {fileType(f.mimeType)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {f.modifiedTime ? timeAgo(f.modifiedTime) : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {f.webViewLink ? (
+                          <ExternalLink className="size-3.5 text-muted-foreground" />
+                        ) : null}
+                      </TableCell>
+                    </>
+                  );
+                  return f.webViewLink ? (
+                    <TableRow
+                      key={f.id}
+                      className="cursor-pointer"
+                      onClick={() =>
+                        window.open(
+                          f.webViewLink!,
+                          '_blank',
+                          'noopener,noreferrer',
+                        )
+                      }
+                    >
+                      {cells}
+                    </TableRow>
+                  ) : (
+                    <TableRow key={f.id}>{cells}</TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

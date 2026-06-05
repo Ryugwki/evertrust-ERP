@@ -19,6 +19,7 @@ import {
   AssignmentDto,
   AssignTenderDto,
   CampaignDto,
+  CampaignFilesDto,
   CampaignSyncResultDto,
   CreateApprovalRequestDto,
   CreateCampaignDto,
@@ -469,6 +470,13 @@ export const api = {
 
     get: (id: string, signal?: AbortSignal) =>
       request<CampaignDto>(`/campaigns/${id}`, { schema: CampaignDto, signal }),
+
+    // Every file in the campaign's Drive folder (each row links into Drive).
+    files: (id: string, signal?: AbortSignal) =>
+      request<z.infer<typeof CampaignFilesDto>>(`/campaigns/${id}/files`, {
+        schema: CampaignFilesDto,
+        signal,
+      }),
 
     // "Lock & Load": persists the campaign and fires the AIM webhook server-side.
     create: (input: z.infer<typeof CreateCampaignDto>) =>

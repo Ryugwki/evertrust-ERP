@@ -8,7 +8,11 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { schema } from '@evertrust/db';
-import type { CampaignSyncResultDto, CreateCampaignDto } from '@evertrust/shared';
+import type {
+  CampaignFilesDto,
+  CampaignSyncResultDto,
+  CreateCampaignDto,
+} from '@evertrust/shared';
 import { DB, type DbClient } from '../db/db.tokens';
 import { tenantScope } from '../common/tenant';
 import { AppConfigService } from '../config/app-config.service';
@@ -292,6 +296,62 @@ export class CampaignsService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  // Every file in a campaign's Drive folder, via the erp-campaign-files webhook
+  // (the ERP has no Google creds). Tenant-scoped — get() throws if the campaign
+  // isn't this org's. Degrades to an empty list if the folder/webhook isn't set.
+  async listFiles(orgId: string, id: string): Promise<CampaignFilesDto> {
+    const campaign = await this.get(orgId, id);
+    const base = this.campaignFilesWebhookUrl();
+    if (!base) return { configured: false, count: 0, files: [] };
+    if (!campaign.driveFolderId) return { configured: true, count: 0, files: [] };
+    const url = `${base}?folderId=${encodeURIComponent(campaign.driveFolderId)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const res = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new ServiceUnavailableException(
+          `Campaign files returned HTTP ${res.status}.`,
+        );
+      }
+      const json = (await res.json().catch(() => ({}))) as { files?: unknown };
+      const raw = Array.isArray(json?.files) ? json.files : [];
+      const s = (v: unknown) => (typeof v === 'string' && v.length ? v : null);
+      const files = raw
+        .filter(
+          (r): r is Record<string, unknown> =>
+            !!r && typeof (r as Record<string, unknown>).id === 'string',
+        )
+        .map((r) => ({
+          id: String(r.id),
+          name: typeof r.name === 'string' ? r.name : String(r.id),
+          mimeType: s(r.mimeType),
+          webViewLink: s(r.webViewLink),
+          modifiedTime: s(r.modifiedTime),
+          size: s(r.size),
+        }));
+      return { configured: true, count: files.length, files };
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      this.logger.warn(
+        `campaign files GET ${url} failed: ${err instanceof Error ? err.message : 'error'}`,
+      );
+      throw new ServiceUnavailableException(
+        'Campaign files call failed — check that the CAMPAIGNS LIST workflow is active.',
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private campaignFilesWebhookUrl(): string {
+    const base = (this.config.get('N8N_API_URL') ?? '').trim().replace(/\/+$/, '');
+    return base ? `${base}/webhook/erp-campaign-files` : '';
   }
 
   // The erp-campaigns-list webhook URL: the explicit env override, else derived from

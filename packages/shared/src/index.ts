@@ -1005,6 +1005,26 @@ export const CampaignDto = z.object({
 });
 export type CampaignDto = z.infer<typeof CampaignDto>;
 
+// GET /campaigns/:id/files — every file in the campaign's Drive folder, listed
+// via the CAMPAIGNS LIST workflow's erp-campaign-files webhook (the ERP has no
+// Google creds). Each row links straight to the file in Drive.
+export const CampaignFileDto = z.object({
+  id: z.string(),
+  name: z.string(),
+  mimeType: z.string().nullable(),
+  webViewLink: z.string().nullable(),
+  modifiedTime: z.string().nullable(),
+  size: z.string().nullable(),
+});
+export type CampaignFileDto = z.infer<typeof CampaignFileDto>;
+
+export const CampaignFilesDto = z.object({
+  configured: z.boolean(),
+  count: z.number(),
+  files: z.array(CampaignFileDto),
+});
+export type CampaignFilesDto = z.infer<typeof CampaignFilesDto>;
+
 // Body for POST /campaigns — the 9 AIM "Lock & Load" inputs. `name` is the only
 // optional one (matches the reference form). status/driveFolder*/deployed* are
 // server-owned (set from the AIM webhook result) and deliberately absent.

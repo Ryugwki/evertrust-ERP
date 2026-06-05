@@ -9,7 +9,11 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import type { CampaignDto, CampaignSyncResultDto } from '@evertrust/shared';
+import type {
+  CampaignDto,
+  CampaignFilesDto,
+  CampaignSyncResultDto,
+} from '@evertrust/shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/auth.types';
@@ -40,6 +44,16 @@ export class CampaignsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CampaignDto> {
     return this.campaigns.get(orgId, id) as unknown as Promise<CampaignDto>;
+  }
+
+  // Every file in the campaign's Drive folder (via erp-campaign-files webhook).
+  @RequirePermissions('campaigns:read')
+  @Get(':id/files')
+  files(
+    @OrgId() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CampaignFilesDto> {
+    return this.campaigns.listFiles(orgId, id);
   }
 
   // Reconcile the campaign list against the live Drive "Evertrust Campaigns" folder
