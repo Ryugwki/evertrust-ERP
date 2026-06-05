@@ -379,20 +379,22 @@ function UserRowCells({
         <div className="flex items-center gap-2.5">
           <button
             type="button"
+            role="switch"
+            aria-checked={u.active}
             onClick={toggleActive}
             disabled={protectedRow || update.isPending}
             title={protectedRow ? (isSA ? 'Super Admin — protected' : 'You can’t deactivate yourself') : u.active ? 'Deactivate member' : 'Reactivate member'}
             aria-label={u.active ? 'Deactivate' : 'Reactivate'}
             className={cn(
-              'relative h-[19px] w-[34px] shrink-0 rounded-full transition-colors',
+              'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
               u.active ? 'bg-emerald-500' : 'bg-muted ring-1 ring-inset ring-border',
               protectedRow ? 'cursor-not-allowed opacity-45' : 'cursor-pointer',
             )}
           >
             <span
               className={cn(
-                'absolute top-0.5 size-[15px] rounded-full shadow transition-transform',
-                u.active ? 'translate-x-[17px] bg-white' : 'translate-x-0.5 bg-zinc-400',
+                'inline-block size-4 rounded-full shadow transition-transform',
+                u.active ? 'translate-x-4 bg-white' : 'translate-x-0.5 bg-zinc-300',
               )}
             />
           </button>
