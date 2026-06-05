@@ -1,213 +1,441 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  ChevronDown,
+  Eye,
+  KeyRound,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  ShieldCheck,
+  Trash2,
+  UserPlus,
+} from 'lucide-react';
 import {
   DEPARTMENT_LABELS,
   POSITION_LABELS,
+  PERMISSIONS,
   ROLE_LABELS,
+  effectivePermissions,
   type AdminUserDto,
+  type Department,
+  type UserRole,
 } from '@evertrust/shared';
-import { useAdminUsers } from '@/hooks/use-admin-users';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { useMe } from '@/hooks/use-auth';
+import {
+  useAdminUsers,
+  useUpdateUser,
+} from '@/hooks/use-admin-users';
+import { PageHeader } from '@/components/common/page-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PageHeader } from '@/components/common/page-header';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { UserCreateDialog } from '@/components/users/user-create-dialog';
+import { EditUserDialog } from '@/components/users/edit-user-dialog';
+import { UserDetailsDialog } from '@/components/users/user-details-dialog';
+import { DeleteUserDialog } from '@/components/users/delete-user-dialog';
 import { cn } from '@/lib/utils';
-import { ROLE_STYLES } from './role-styles';
-import { UserCreateDialog } from './user-create-dialog';
-import { UserDetailPanel } from './user-detail-panel';
 
-type Filter = 'all' | 'admins' | 'managers' | 'employees' | 'inactive';
+const ROLE_PILL: Record<UserRole, string> = {
+  SUPER_ADMIN: 'border-violet-500/30 bg-violet-500/10 text-violet-500',
+  ADMIN: 'border-sky-500/30 bg-sky-500/10 text-sky-500',
+  MANAGER: 'border-amber-500/30 bg-amber-500/10 text-amber-500',
+  EMPLOYEE: 'border-border bg-muted text-muted-foreground',
+};
+const ROLE_AV: Record<UserRole, string> = {
+  SUPER_ADMIN: 'bg-violet-500/15 text-violet-300',
+  ADMIN: 'bg-sky-500/15 text-sky-300',
+  MANAGER: 'bg-amber-500/15 text-amber-300',
+  EMPLOYEE: 'bg-muted text-muted-foreground',
+};
+const DEPTS = Object.keys(DEPARTMENT_LABELS) as Department[];
+const NO_DEPT = '__none__';
 
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'admins', label: 'Admins' },
-  { key: 'managers', label: 'Managers' },
-  { key: 'employees', label: 'Employees' },
-  { key: 'inactive', label: 'Inactive' },
-];
+const initials = (n: string) =>
+  n.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+const joined = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+const permCount = (u: AdminUserDto) =>
+  effectivePermissions(u.role, u.permissions ?? null).length;
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
-}
+type StatusFilter = 'all' | 'active' | 'inactive';
+type Layout = 'flat' | 'grouped';
 
-function matchesFilter(u: AdminUserDto, filter: Filter): boolean {
-  switch (filter) {
-    case 'admins':
-      return u.role === 'ADMIN' || u.role === 'SUPER_ADMIN';
-    case 'managers':
-      return u.role === 'MANAGER';
-    case 'employees':
-      return u.role === 'EMPLOYEE';
-    case 'inactive':
-      return !u.active;
-    default:
-      return true;
-  }
-}
-
-// Users page: a two-pane "Team & access" surface. Left = searchable, filterable
-// roster (live from GET /admin/users); right = the selected member's inline
-// editor (role / position / department / permissions + (de)activate). One source
-// of truth — every edit PATCHes the real user and the list stays authoritative.
 export function UsersView() {
-  const users = useAdminUsers();
-  const data = users.data ?? [];
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const usersQ = useAdminUsers();
+  const me = useMe();
+  const [q, setQ] = useState('');
+  const [roleF, setRoleF] = useState<'all' | UserRole>('all');
+  const [deptF, setDeptF] = useState<'all' | Department>('all');
+  const [statusF, setStatusF] = useState<StatusFilter>('all');
+  const [layout, setLayout] = useState<Layout>('flat');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
   const [showCreate, setShowCreate] = useState(false);
+  const [editUser, setEditUser] = useState<AdminUserDto | null>(null);
+  const [detailUser, setDetailUser] = useState<AdminUserDto | null>(null);
+  const [deleteUser, setDeleteUser] = useState<AdminUserDto | null>(null);
 
+  const all = usersQ.data ?? [];
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return data.filter(
-      (u) =>
-        matchesFilter(u, filter) &&
-        (q === '' ||
-          u.name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q)),
-    );
-  }, [data, search, filter]);
+    const needle = q.trim().toLowerCase();
+    return all.filter((u) => {
+      if (needle && !(u.name.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle))) return false;
+      if (roleF !== 'all' && u.role !== roleF) return false;
+      if (deptF !== 'all' && u.department !== deptF) return false;
+      if (statusF === 'active' && !u.active) return false;
+      if (statusF === 'inactive' && u.active) return false;
+      return true;
+    });
+  }, [all, q, roleF, deptF, statusF]);
 
-  // The selected member: the explicit pick if still visible, else the first row.
-  const selected =
-    data.find((u) => u.id === selectedId) ?? filtered[0] ?? data[0] ?? null;
-  const activeCount = data.filter((u) => u.active).length;
+  const activeCount = all.filter((u) => u.active).length;
+  const adminCount = all.filter((u) => u.role === 'SUPER_ADMIN' || u.role === 'ADMIN').length;
+  const deptCount = new Set(all.map((u) => u.department).filter(Boolean)).size;
+  const cols = layout === 'flat' ? 8 : 7;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
-        title="Users"
-        description={
-          users.isLoading
-            ? 'Team & access'
-            : `Team & access · ${data.length} member${
-                data.length === 1 ? '' : 's'
-              } · ${activeCount} active`
-        }
+        title="Team & access"
+        description="Everyone in your workspace — roles, departments, and what they can do."
         actions={
-          <Button size="sm" onClick={() => setShowCreate(true)}>
-            <Plus className="size-4" />
-            Add user
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border bg-card p-0.5">
+              {(['flat', 'grouped'] as const).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => setLayout(l)}
+                  className={cn(
+                    'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                    layout === l ? 'bg-muted text-foreground' : 'text-muted-foreground',
+                  )}
+                >
+                  {l === 'flat' ? 'Flat' : 'Grouped'}
+                </button>
+              ))}
+            </div>
+            <Button onClick={() => setShowCreate(true)}>
+              <UserPlus className="size-4" />
+              Add member
+            </Button>
+          </div>
         }
       />
 
-      {users.isError ? (
-        <p className="text-sm text-destructive">
-          Could not load users: {users.error.message}
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
-          {/* left: roster */}
-          <Card className="self-start overflow-hidden">
-            <div className="border-b p-3">
-              <Input
-                placeholder="Search name or email…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {FILTERS.map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setFilter(f.key)}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                      filter === f.key
-                        ? 'border-primary/40 bg-muted text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {([
+          ['Members', all.length],
+          ['Active', activeCount],
+          ['Admins', adminCount],
+          ['Departments', deptCount],
+        ] as [string, number][]).map(([k, v]) => (
+          <div key={k} className="rounded-xl border bg-card px-4 py-3">
+            <div className="text-xl font-bold tabular-nums">
+              {usersQ.isLoading ? <Skeleton className="h-6 w-8" /> : v}
             </div>
-            <div className="max-h-[70vh] overflow-y-auto">
-              {users.isLoading ? (
-                <div className="flex flex-col gap-2 p-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-14 w-full" />
-                  ))}
-                </div>
-              ) : filtered.length === 0 ? (
-                <p className="p-6 text-center text-sm text-muted-foreground">
-                  No users match.
-                </p>
+            <div className="mt-0.5 text-[10.5px] uppercase tracking-wide text-muted-foreground/70">{k}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search name or email…"
+          className="h-9 max-w-xs"
+        />
+        <select
+          value={roleF}
+          onChange={(e) => setRoleF(e.target.value as 'all' | UserRole)}
+          className="h-9 rounded-md border bg-card px-2 text-sm"
+        >
+          <option value="all">All roles</option>
+          {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+            <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+          ))}
+        </select>
+        {layout === 'flat' ? (
+          <select
+            value={deptF}
+            onChange={(e) => setDeptF(e.target.value as 'all' | Department)}
+            className="h-9 rounded-md border bg-card px-2 text-sm"
+          >
+            <option value="all">All departments</option>
+            {DEPTS.map((d) => (
+              <option key={d} value={d}>{DEPARTMENT_LABELS[d]}</option>
+            ))}
+          </select>
+        ) : null}
+        <div className="inline-flex overflow-hidden rounded-md border">
+          {(['all', 'active', 'inactive'] as StatusFilter[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusF(s)}
+              className={cn('h-9 px-3 text-xs capitalize', statusF === s ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {filtered.length} of {all.length} members
+        </span>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border bg-card">
+        {usersQ.isLoading ? (
+          <Skeleton className="h-64 w-full" />
+        ) : usersQ.isError ? (
+          <p className="p-6 text-sm text-destructive">Could not load users: {usersQ.error.message}</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Member</TableHead>
+                <TableHead>Role</TableHead>
+                {layout === 'flat' ? <TableHead>Department</TableHead> : null}
+                <TableHead>Position</TableHead>
+                <TableHead>Access</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Joined</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={cols} className="py-10 text-center text-sm text-muted-foreground">
+                    No members match your filters.
+                  </TableCell>
+                </TableRow>
+              ) : layout === 'flat' ? (
+                filtered.map((u) => (
+                  <UserRowCells
+                    key={u.id}
+                    u={u}
+                    showDept
+                    selfId={me.data?.id}
+                    onDetails={() => setDetailUser(u)}
+                    onEdit={() => setEditUser(u)}
+                    onDelete={() => setDeleteUser(u)}
+                  />
+                ))
               ) : (
-                filtered.map((u) => {
-                  const s = ROLE_STYLES[u.role];
-                  const isSel = selected?.id === u.id;
-                  return (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => setSelectedId(u.id)}
-                      className={cn(
-                        'flex w-full items-center gap-3 border-b px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-muted/50',
-                        isSel && 'bg-muted',
-                        !u.active && 'opacity-60',
-                      )}
+                [...DEPTS, NO_DEPT as unknown as Department].flatMap((dept) => {
+                  const isNone = (dept as unknown as string) === NO_DEPT;
+                  const members = filtered.filter((u) => (isNone ? !u.department : u.department === dept));
+                  if (!members.length) return [];
+                  const label = isNone ? 'No department' : DEPARTMENT_LABELS[dept];
+                  const isCol = collapsed.has(label);
+                  return [
+                    <TableRow
+                      key={`g-${label}`}
+                      className="cursor-pointer bg-muted/40 hover:bg-muted/50"
+                      onClick={() =>
+                        setCollapsed((p) => {
+                          const n = new Set(p);
+                          if (n.has(label)) n.delete(label);
+                          else n.add(label);
+                          return n;
+                        })
+                      }
                     >
-                      <Avatar className="size-9">
-                        <AvatarFallback
-                          className={cn('text-xs font-medium', s.tint)}
-                        >
-                          {initials(u.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium leading-tight">
-                          {u.name}
-                        </div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {u.department ? DEPARTMENT_LABELS[u.department] : '—'}
-                          {u.position ? ` · ${POSITION_LABELS[u.position]}` : ''}
-                        </div>
-                      </div>
-                      <Badge
-                        className={cn(
-                          'shrink-0 gap-1 border-transparent text-[10px] font-medium',
-                          s.tint,
-                        )}
-                      >
-                        <span className={cn('size-1.5 rounded-full', s.dot)} />
-                        {ROLE_LABELS[u.role]}
-                      </Badge>
-                    </button>
-                  );
+                      <TableCell colSpan={cols} className="py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <ChevronDown className={cn('mr-1.5 inline size-3.5 transition-transform', isCol && '-rotate-90')} />
+                        {label}
+                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-foreground">{members.length}</span>
+                      </TableCell>
+                    </TableRow>,
+                    ...(isCol
+                      ? []
+                      : members.map((u) => (
+                          <UserRowCells
+                            key={u.id}
+                            u={u}
+                            showDept={false}
+                            selfId={me.data?.id}
+                            onDetails={() => setDetailUser(u)}
+                            onEdit={() => setEditUser(u)}
+                            onDelete={() => setDeleteUser(u)}
+                          />
+                        ))),
+                  ];
                 })
               )}
-            </div>
-          </Card>
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
-          {/* right: detail / editor (renders its own grouped cards) */}
+      <UserCreateDialog open={showCreate} onOpenChange={setShowCreate} />
+      {editUser ? (
+        <EditUserDialog user={editUser} selfId={me.data?.id} open onOpenChange={(o) => !o && setEditUser(null)} />
+      ) : null}
+      {detailUser ? (
+        <UserDetailsDialog user={detailUser} open onOpenChange={(o) => !o && setDetailUser(null)} />
+      ) : null}
+      {deleteUser ? (
+        <DeleteUserDialog user={deleteUser} open onOpenChange={(o) => !o && setDeleteUser(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+function UserRowCells({
+  u,
+  showDept,
+  selfId,
+  onDetails,
+  onEdit,
+  onDelete,
+}: {
+  u: AdminUserDto;
+  showDept: boolean;
+  selfId?: string;
+  onDetails: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const update = useUpdateUser();
+  const isSA = u.role === 'SUPER_ADMIN';
+  const isSelf = u.id === selfId;
+  const protectedRow = isSA || isSelf;
+  const total = PERMISSIONS.length;
+
+  const toggleActive = () => {
+    if (protectedRow || update.isPending) return;
+    update.mutate(
+      { id: u.id, patch: { active: !u.active } },
+      {
+        onSuccess: () => toast.success(`${u.name} ${u.active ? 'deactivated' : 'reactivated'}`),
+        onError: (e) => toast.error(e.message),
+      },
+    );
+  };
+
+  return (
+    <TableRow className={cn(!u.active && 'opacity-60')}>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <Avatar className="size-8">
+            <AvatarFallback className={cn('text-xs font-semibold', ROLE_AV[u.role])}>{initials(u.name)}</AvatarFallback>
+          </Avatar>
           <div className="min-w-0">
-            {users.isLoading ? (
-              <Skeleton className="h-96 w-full rounded-xl" />
-            ) : selected ? (
-              <UserDetailPanel key={selected.id} user={selected} />
-            ) : (
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-sm text-muted-foreground">
-                    No team members yet.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            <div className="truncate text-[13.5px] font-semibold">{u.name}</div>
+            <div className="truncate text-xs text-muted-foreground">{u.email}</div>
           </div>
         </div>
-      )}
-    </div>
+      </TableCell>
+      <TableCell>
+        <span className={cn('inline-flex rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold', ROLE_PILL[u.role])}>
+          {ROLE_LABELS[u.role]}
+        </span>
+      </TableCell>
+      {showDept ? (
+        <TableCell className="text-[13px]">
+          {u.department ? DEPARTMENT_LABELS[u.department] : <span className="text-muted-foreground">—</span>}
+        </TableCell>
+      ) : null}
+      <TableCell className="text-[13px]">
+        {u.position ? POSITION_LABELS[u.position] : <span className="text-muted-foreground">—</span>}
+      </TableCell>
+      <TableCell>
+        {isSA ? (
+          <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-emerald-500">
+            <ShieldCheck className="size-3.5" /> Full access
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+            <KeyRound className="size-3" />
+            <b className="text-foreground">{permCount(u)}</b>/{total} perms
+          </span>
+        )}
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={toggleActive}
+            disabled={protectedRow || update.isPending}
+            title={protectedRow ? (isSA ? 'Super Admin — protected' : 'You can’t deactivate yourself') : u.active ? 'Deactivate member' : 'Reactivate member'}
+            aria-label={u.active ? 'Deactivate' : 'Reactivate'}
+            className={cn(
+              'relative h-[19px] w-[34px] shrink-0 rounded-full transition-colors',
+              u.active ? 'bg-emerald-500' : 'bg-muted ring-1 ring-inset ring-border',
+              protectedRow ? 'cursor-not-allowed opacity-45' : 'cursor-pointer',
+            )}
+          >
+            <span
+              className={cn(
+                'absolute top-0.5 size-[15px] rounded-full shadow transition-transform',
+                u.active ? 'translate-x-[17px] bg-white' : 'translate-x-0.5 bg-zinc-400',
+              )}
+            />
+          </button>
+          <span className={cn('text-[12.5px]', !u.active && 'text-muted-foreground')}>
+            {u.active ? 'Active' : 'Deactivated'}
+          </span>
+          {isSA ? <Lock className="size-3 text-muted-foreground" /> : null}
+        </div>
+      </TableCell>
+      <TableCell className="text-[12.5px] text-muted-foreground">{joined(u.createdAt)}</TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onClick={onDetails}>
+              <Eye className="size-4" /> View details
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onEdit}>
+              <Pencil className="size-4" /> Edit access
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {protectedRow ? (
+              <DropdownMenuItem disabled>
+                <Lock className="size-4" /> {isSA ? 'Protected (Super Admin)' : 'Protected (you)'}
+              </DropdownMenuItem>
+            ) : (
+              <>
+                <DropdownMenuItem onClick={toggleActive}>
+                  {u.active ? 'Deactivate member' : 'Reactivate member'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
+                  <Trash2 className="size-4" /> Delete permanently
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
   );
 }
