@@ -351,9 +351,15 @@ export class LeadsService {
 
     let lead: LeadRow;
     if (existing) {
-      // Never downgrade an already-CUSTOMER lead back to a hot stage.
+      // Never downgrade a manually-advanced lead on re-sync: CUSTOMER stays
+      // CUSTOMER; ONGOING (ERP-only, set by hand) stays ONGOING unless n8n now
+      // reports it graduated to CUSTOMER. Otherwise take the incoming stage.
       const nextStage =
-        existing.stage === 'CUSTOMER' ? 'CUSTOMER' : stage;
+        existing.stage === 'CUSTOMER'
+          ? 'CUSTOMER'
+          : existing.stage === 'ONGOING' && stage !== 'CUSTOMER'
+            ? 'ONGOING'
+            : stage;
       const updated = await this.db
         .update(schema.leads)
         .set({ ...fields, stage: nextStage, updatedAt: new Date() })

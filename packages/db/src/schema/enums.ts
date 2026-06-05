@@ -140,12 +140,13 @@ export const arsenalRunStatusEnum = pgEnum('arsenal_run_status', [
 export const rfqStatusEnum = pgEnum('rfq_status', ['DISPATCHED', 'FAILED']);
 
 // Key Account hot-lead pipeline stage. Mirrors the n8n hot_leads vocabulary:
-// INTERESTED / MEETING_SCHEDULED (the "Hot Reason"), CUSTOMER (graduated), and
-// ARCHIVED (dismissed). The board columns are INTERESTED -> MEETING_SCHEDULED ->
-// CUSTOMER.
+// INTERESTED / MEETING_SCHEDULED (the "Hot Reason"), ONGOING (deal in progress —
+// ERP-only, set manually), CUSTOMER (graduated), and ARCHIVED (dismissed). The
+// board columns are INTERESTED -> MEETING_SCHEDULED -> ONGOING -> CUSTOMER.
 export const leadStageEnum = pgEnum('lead_stage', [
   'INTERESTED',
   'MEETING_SCHEDULED',
+  'ONGOING',
   'CUSTOMER',
   'ARCHIVED',
 ]);

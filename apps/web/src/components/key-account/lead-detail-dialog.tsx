@@ -31,6 +31,7 @@ import { formatDateTime } from '@/lib/tender-format';
 const STAGES: LeadStage[] = [
   'INTERESTED',
   'MEETING_SCHEDULED',
+  'ONGOING',
   'CUSTOMER',
   'ARCHIVED',
 ];

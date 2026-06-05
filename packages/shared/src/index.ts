@@ -1313,6 +1313,7 @@ export type ArsenalBackfillResultDto = z.infer<typeof ArsenalBackfillResultDto>;
 export const LeadStage = z.enum([
   'INTERESTED',
   'MEETING_SCHEDULED',
+  'ONGOING',
   'CUSTOMER',
   'ARCHIVED',
 ]);
@@ -1321,6 +1322,7 @@ export type LeadStage = z.infer<typeof LeadStage>;
 export const LeadStageLabel: Record<LeadStage, string> = {
   INTERESTED: 'Interested',
   MEETING_SCHEDULED: 'Meeting Scheduled',
+  ONGOING: 'Ongoing',
   CUSTOMER: 'Customer',
   ARCHIVED: 'Archived',
 };

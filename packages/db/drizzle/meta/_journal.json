@@ -120,6 +120,13 @@
       "when": 1780564000000,
       "tag": "0016_campaign_drive_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780565000000,
+      "tag": "0017_lead_stage_ongoing",
+      "breakpoints": true
     }
   ]
 }
