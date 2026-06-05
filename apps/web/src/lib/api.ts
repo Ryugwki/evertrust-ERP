@@ -36,8 +36,11 @@ import {
   ListTendersQuery,
   LoginDto,
   LoginResponseDto,
+  MarketingDraftListDto,
   MarketingReportDto,
   MarketingReportPeriod,
+  SendDraftDto,
+  SendDraftResultDto,
   MeDto,
   PriceAssistResultDto,
   PriceObservationDto,
@@ -601,6 +604,21 @@ export const api = {
       request<{ id: string }>(`/sales/meetings/${id}`, {
         method: 'DELETE',
         schema: z.object({ id: z.string() }),
+      }),
+  },
+
+  // ---- Marketing: RAG Draft Review (via the EVERTRUST - RAG AGENT workflow) ----
+  marketing: {
+    listDrafts: (signal?: AbortSignal) =>
+      request<z.infer<typeof MarketingDraftListDto>>('/marketing/drafts', {
+        schema: MarketingDraftListDto,
+        signal,
+      }),
+    sendDraft: (input: z.infer<typeof SendDraftDto>) =>
+      request<z.infer<typeof SendDraftResultDto>>('/marketing/drafts/send', {
+        method: 'POST',
+        body: SendDraftDto.parse(input),
+        schema: SendDraftResultDto,
       }),
   },
 

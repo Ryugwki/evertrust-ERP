@@ -1,24 +1,26 @@
 'use client';
 
 import { useMarketingReport } from '@/hooks/use-arsenal';
+import { useMarketingDrafts } from '@/hooks/use-marketing';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { MARKETING_DRAFT_COUNT } from './marketing-draft-review';
 
 // The persistent funnel KPI strip above the Marketing tabs (mockup parity). Leads →
 // Emails → Replies → Meetings are REAL arsenal_runs counts (null shows "—" until n8n
-// reports them via the run callback); "Drafts to review" is the RAG-draft queue.
+// reports them via the run callback); "Drafts to review" is the live RAG-draft queue.
 export function MarketingFunnelBar() {
   const report = useMarketingReport('week', null);
   const f = report.data?.funnel;
   const loading = report.isLoading;
+  const draftsQ = useMarketingDrafts();
+  const draftCount = draftsQ.data?.count ?? null;
 
   const cells: { label: string; value: number | null; accent?: boolean }[] = [
     { label: 'Leads', value: f?.leadsFound ?? null },
     { label: 'Emails', value: f?.emailsSent ?? null },
     { label: 'Replies', value: f?.repliesHandled ?? null },
     { label: 'Meetings', value: f?.meetingsBooked ?? null },
-    { label: 'Drafts to review', value: MARKETING_DRAFT_COUNT, accent: true },
+    { label: 'Drafts to review', value: draftCount, accent: true },
   ];
 
   return (

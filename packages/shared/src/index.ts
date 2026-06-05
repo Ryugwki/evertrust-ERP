@@ -677,6 +677,61 @@ export const AnalyzeMeetingDto = z.object({
 });
 export type AnalyzeMeetingDto = z.infer<typeof AnalyzeMeetingDto>;
 
+// ── Marketing · RAG Draft Review ────────────────────────────────────────────
+// Reviewable replies the EVERTRUST - RAG AGENT workflow drafted for "Unsure"
+// leads and saved as Gmail drafts (Do Not Send). Read shape mirrors the n8n
+// erp-rag-drafts webhook; the ERP proxies it (the ERP has no Google creds).
+export const MarketingDraftDto = z.object({
+  draftId: z.string().nullable(),
+  messageId: z.string().nullable(),
+  threadId: z.string().nullable(),
+  clientEmail: z.string().nullable(),
+  company: z.string().nullable(),
+  leadQuestion: z.string().nullable(),
+  unsureArea: z.string().nullable(),
+  unsureSection: z.string().nullable(),
+  explanation: z.string().nullable(),
+  subject: z.string().nullable(),
+  body: z.string().nullable(),
+  source: z.string().nullable(),
+  status: z.string().nullable(),
+  createdAt: z.string().nullable(),
+  // Only drafts that carry a Gmail draft id can be sent from the ERP.
+  sendable: z.boolean(),
+});
+export type MarketingDraftDto = z.infer<typeof MarketingDraftDto>;
+
+// GET /marketing/drafts — configured=false means N8N_API_URL isn't set.
+export const MarketingDraftListDto = z.object({
+  configured: z.boolean(),
+  count: z.number(),
+  drafts: z.array(MarketingDraftDto),
+});
+export type MarketingDraftListDto = z.infer<typeof MarketingDraftListDto>;
+
+// POST /marketing/drafts/send — approve & send a reviewed draft. The reviewer
+// may have edited subject/body; n8n sends the final text, deletes the stale
+// Gmail draft and marks the sheet row SENT. Human-approval gate.
+export const SendDraftDto = z.object({
+  draftId: z.string().trim().min(1),
+  to: z.string().trim().email(),
+  subject: z.string().default(''),
+  body: z.string().trim().min(1),
+  threadId: z.string().trim().optional(),
+  source: z.string().trim().optional(),
+});
+export type SendDraftDto = z.infer<typeof SendDraftDto>;
+
+export const SendDraftResultDto = z.object({
+  ok: z.boolean(),
+  status: z.string().nullable(),
+  draftId: z.string().nullable(),
+  to: z.string().nullable(),
+  sentMessageId: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type SendDraftResultDto = z.infer<typeof SendDraftResultDto>;
+
 // NOTE: meetings enter the ERP ONLY via "Sync from Drive" (mirror the folder
 // Docs). There is intentionally no n8n→ERP push/ingest of meetings — the n8n
 // workflow runs analyses and writes Drive artifacts; it never inserts ERP rows.

@@ -93,6 +93,12 @@ export const queryKeys = {
     list: () => ['personas', 'list'] as const,
   },
 
+  // Marketing: RAG draft-review queue (from the RAG Agent workflow).
+  marketing: {
+    all: ['marketing'] as const,
+    drafts: () => ['marketing', 'drafts'] as const,
+  },
+
   // Key Account: hot-lead CRM.
   leads: {
     all: ['leads'] as const,

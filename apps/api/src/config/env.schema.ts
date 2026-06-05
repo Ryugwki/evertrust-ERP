@@ -89,6 +89,12 @@ export const EnvSchema = z.object({
   // via the executions backfill (N8N_API_URL/KEY), not these.
   N8N_PROVISION_HOT_LEADS_WEBHOOK_URL: z.string().default(''),
   N8N_HOT_LEADS_PIPELINE_WEBHOOK_URL: z.string().default(''),
+
+  // Marketing · RAG Draft Review. Optional explicit overrides; blank falls back
+  // to ${N8N_API_URL}/webhook/erp-rag-drafts and /erp-rag-send. So once
+  // N8N_API_URL is set, Draft Review works without setting these.
+  N8N_RAG_DRAFTS_WEBHOOK_URL: z.string().default(''),
+  N8N_RAG_SEND_WEBHOOK_URL: z.string().default(''),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
