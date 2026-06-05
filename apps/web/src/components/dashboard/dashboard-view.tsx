@@ -1,14 +1,22 @@
 'use client';
 
+import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   AlarmClock,
+  AlertTriangle,
   Briefcase,
   CalendarCheck,
+  CheckCircle2,
   Contact,
   Crosshair,
+  Filter,
   FileText,
   Layers,
+  RefreshCw,
   Trophy,
+  Unlink,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -47,6 +55,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common/page-header';
 import { StatTile } from '@/components/common/stat-tile';
@@ -99,11 +108,12 @@ function ChartTip({
 }
 
 // The landing cockpit: a greeting, a live KPI row, the acquisition→pipeline
-// charts, and the deadline-at-risk frame. Every number comes from a hook a module
-// already fetches — no decorative/fabricated values — and every tile/chart is
-// gated by the same read permission as its source (the API 403s otherwise).
+// charts, a needs-attention queue and the deadline-at-risk frame. Every number
+// comes from a hook a module already fetches — no decorative/fabricated values —
+// and every tile/chart is gated by the same read permission as its source.
 export function DashboardView() {
   const { data: user, isLoading, isError, error } = useMe();
+  const queryClient = useQueryClient();
 
   return (
     <AppShell>
@@ -155,11 +165,26 @@ export function DashboardView() {
                       {DEPARTMENT_LABELS[user.department]}
                     </Badge>
                   ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void queryClient.invalidateQueries()}
+                  >
+                    <RefreshCw className="size-4" />
+                    Refresh
+                  </Button>
                 </div>
               }
             />
 
             <StatRow />
+
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Can permission="campaigns:read">
+                <AcquisitionFunnelCard />
+              </Can>
+              <NeedsAttentionCard />
+            </div>
 
             <div className="grid gap-6 lg:grid-cols-3">
               <Can permission="tenders:read">
@@ -173,6 +198,14 @@ export function DashboardView() {
             <Can permission="tenders:read">
               <DeadlineAtRiskCard />
             </Can>
+
+            <p className="text-xs text-muted-foreground">
+              Every figure above is read live from operational data. Panels that
+              need historical tracking — acquisition-over-time, reply topics and
+              week-over-week trends — appear here once the Arsenal logs daily
+              metrics to the ERP; they are deliberately not shown rather than
+              fabricated.
+            </p>
           </>
         ) : null}
       </div>
@@ -248,9 +281,7 @@ function StatRow() {
           label="Open tenders"
           value={num(tenders.isLoading, openTenders)}
           hint={
-            tenders.isError
-              ? 'Could not load'
-              : `${tenderRows.length} total`
+            tenders.isError ? 'Could not load' : `${tenderRows.length} total`
           }
           accent="bg-sky-400"
           icon={<FileText className="size-4" />}
@@ -274,6 +305,200 @@ function StatRow() {
         />
       </Can>
     </div>
+  );
+}
+
+// ---- Acquisition funnel (real: hot leads → meetings → customers won) ----
+function AcquisitionFunnelCard() {
+  const leads = useLeads();
+  const meetings = useMeetings();
+  const customers = useCustomers();
+
+  const loading = leads.isLoading || meetings.isLoading || customers.isLoading;
+  const stages = [
+    {
+      label: 'Hot leads',
+      value: leads.data?.length ?? 0,
+      color: '#a78bfa',
+    },
+    {
+      label: 'Meetings',
+      value: meetings.data?.length ?? 0,
+      color: '#38bdf8',
+    },
+    {
+      label: 'Customers won',
+      value: customers.data?.length ?? 0,
+      color: '#34d399',
+    },
+  ];
+  const max = Math.max(1, ...stages.map((s) => s.value));
+  const anyData = stages.some((s) => s.value > 0);
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Filter className="size-4 text-muted-foreground" /> Acquisition funnel
+        </CardTitle>
+        <CardDescription>Hot leads → meetings → customers won</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-[180px] w-full" />
+        ) : !anyData ? (
+          <EmptyChart label="No acquisition data yet" h={180} />
+        ) : (
+          <div className="flex flex-col gap-4 py-2">
+            {stages.map((s, i) => {
+              const prev = i > 0 ? (stages[i - 1]?.value ?? null) : null;
+              const conv =
+                prev && prev > 0 ? Math.round((s.value / prev) * 100) : null;
+              return (
+                <div key={s.label} className="flex items-center gap-3">
+                  <div className="w-28 shrink-0 text-sm text-muted-foreground">
+                    {s.label}
+                  </div>
+                  <div className="relative h-7 flex-1 overflow-hidden rounded-md bg-muted/40">
+                    <div
+                      className="flex h-full items-center justify-end rounded-md px-2 text-xs font-semibold text-background transition-all"
+                      style={{
+                        width: `${Math.max(7, (s.value / max) * 100)}%`,
+                        background: s.color,
+                      }}
+                    >
+                      {s.value}
+                    </div>
+                  </div>
+                  <div className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    {conv !== null ? `${conv}%` : ''}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- Needs attention (real: deadline risk + unattributed meetings + failed campaigns) ----
+function NeedsAttentionCard() {
+  const atRisk = useDeadlineRisk();
+  const meetings = useMeetings();
+  const campaigns = useCampaigns();
+
+  const loading =
+    atRisk.isLoading || meetings.isLoading || campaigns.isLoading;
+
+  const riskRows = atRisk.data ?? [];
+  const mostUrgent = riskRows[0];
+  const unattributed = (meetings.data ?? []).filter((m) => !m.campaignId);
+  const failed = (campaigns.data ?? []).filter((c) => c.status === 'FAILED');
+
+  type Item = {
+    icon: ReactNode;
+    tone: string;
+    title: string;
+    sub: string;
+    href?: string;
+    cta?: string;
+  };
+  const items: Item[] = [];
+  if (riskRows.length > 0) {
+    items.push({
+      icon: <AlarmClock className="size-4" />,
+      tone: 'text-orange-400',
+      title: `${riskRows.length} tender${riskRows.length > 1 ? 's' : ''} at deadline risk`,
+      sub: mostUrgent
+        ? `Most urgent: ${mostUrgent.tender.title}`
+        : 'Within the T-2 window',
+      href: mostUrgent ? `/tenders/${mostUrgent.tender.id}` : undefined,
+      cta: 'Open',
+    });
+  }
+  if (unattributed.length > 0) {
+    items.push({
+      icon: <Unlink className="size-4" />,
+      tone: 'text-amber-400',
+      title: `${unattributed.length} unattributed meeting${unattributed.length > 1 ? 's' : ''}`,
+      sub: 'Sales · no campaign matched',
+      href: '/sales',
+      cta: 'Link',
+    });
+  }
+  if (failed.length > 0) {
+    items.push({
+      icon: <AlertTriangle className="size-4" />,
+      tone: 'text-red-400',
+      title: `${failed.length} campaign${failed.length > 1 ? 's' : ''} failed`,
+      sub: 'Growth Engine · check the run log',
+      href: '/marketing',
+      cta: 'View',
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <AlertTriangle className="size-4 text-muted-foreground" /> Needs
+          attention
+        </CardTitle>
+        <CardDescription>
+          {loading
+            ? 'Checking…'
+            : items.length === 0
+              ? 'Nothing needs attention'
+              : `${items.length} item${items.length > 1 ? 's' : ''} to clear`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-[180px] w-full" />
+        ) : items.length === 0 ? (
+          <div className="flex h-[180px] flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+            <CheckCircle2 className="size-7 text-emerald-400" />
+            All clear — no deadlines at risk, every meeting attributed.
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {items.map((it, i) => {
+              const body = (
+                <div className="flex items-center gap-3 rounded-md border bg-card p-3 transition-colors hover:bg-muted/40">
+                  <span className={it.tone}>{it.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">
+                      {it.title}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {it.sub}
+                    </div>
+                  </div>
+                  {it.cta ? (
+                    <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                      {it.cta}
+                    </span>
+                  ) : null}
+                </div>
+              );
+              return (
+                <li key={i}>
+                  {it.href ? (
+                    <Link href={it.href} className="block">
+                      {body}
+                    </Link>
+                  ) : (
+                    body
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -305,10 +530,7 @@ function TenderPipelineCard() {
           <div className="h-[220px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--border)"
-                />
+                <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis
                   dataKey="stage"
                   tickLine={false}
@@ -412,9 +634,12 @@ function CampaignStatusCard() {
   );
 }
 
-function EmptyChart({ label }: { label: string }) {
+function EmptyChart({ label, h = 220 }: { label: string; h?: number }) {
   return (
-    <div className="flex h-[220px] items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+    <div
+      className="flex items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground"
+      style={{ height: h }}
+    >
       {label}
     </div>
   );
@@ -431,6 +656,10 @@ function DashboardSkeleton() {
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-[92px] w-full rounded-lg" />
         ))}
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Skeleton className="h-[260px] w-full rounded-lg lg:col-span-2" />
+        <Skeleton className="h-[260px] w-full rounded-lg" />
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <Skeleton className="h-[300px] w-full rounded-lg lg:col-span-2" />
