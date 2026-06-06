@@ -16,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { isRunning, latestRunFor, timeAgo } from '@/lib/arsenal-sequence';
-import { AimLaunchDialog } from '@/components/growth/aim-launch-dialog';
 import { RunStageButton } from '@/components/growth/run-stage-button';
 import { StatusDot } from '@/components/growth/status-dot';
 
@@ -60,7 +59,6 @@ export function MarketingGrowthEngine() {
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <Can permission="campaigns:write">
-          <AimLaunchDialog />
           <Button
             type="button"
             variant="outline"

@@ -14,6 +14,18 @@ export const EnvSchema = z.object({
 
   JWT_EXPIRES_IN: z.string().default('1d'),
 
+  // DEMO / NO-LOGIN MODE. When true, the JwtAuthGuard stops requiring a token and
+  // treats every (non-@Public) request as a real super-admin user resolved from the
+  // DB — so the whole app is usable with nobody signed in. ⚠️ This makes all
+  // org data reachable by anyone who can hit the API; only enable behind a gate.
+  // Default false = normal auth. Flip to false to restore login.
+  AUTH_DISABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  // The account AUTH_DISABLED impersonates. Blank = the first active SUPER_ADMIN.
+  AUTH_DISABLED_USER_EMAIL: z.string().default(''),
+
   // Comma-separated allowlist of browser origins for CORS. Empty = no CORS.
   CORS_ORIGINS: z.string().default(''),
 

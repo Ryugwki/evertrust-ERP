@@ -60,6 +60,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common/page-header';
 import { StatTile } from '@/components/common/stat-tile';
 import { DeadlineAtRiskCard } from '@/components/tenders/deadline-at-risk-card';
+import { AimLaunchDialog } from '@/components/growth/aim-launch-dialog';
 
 function isOpen(t: TenderDto): boolean {
   return (
@@ -159,6 +160,9 @@ export function DashboardView() {
               }
               actions={
                 <div className="flex items-center gap-2">
+                  <Can permission="campaigns:write">
+                    <AimLaunchDialog />
+                  </Can>
                   <Badge variant="secondary">{ROLE_LABELS[user.role]}</Badge>
                   {user.department ? (
                     <Badge variant="outline">
