@@ -48,6 +48,11 @@ type Field = {
   optionLabels?: Record<string, string>;
 };
 
+// The Evertrust mailboxes, reused for both the "Send from" sender and the sales
+// calendar (a meeting books into a mailbox's calendar). Derived from the shared
+// sender list so the two stay in lockstep.
+const MAILBOXES = CAMPAIGN_SENDERS.map((s) => CAMPAIGN_SENDER_LABELS[s]);
+
 const FIELDS: readonly Field[] = [
   { key: 'name', label: 'Name', placeholder: 'Name this attack (optional)', required: false },
   { key: 'niche', label: 'Niche', placeholder: 'LED', required: true },
@@ -56,7 +61,7 @@ const FIELDS: readonly Field[] = [
   { key: 'state', label: 'State / City', placeholder: 'Select a region', required: true, options: CAMPAIGN_REGIONS },
   { key: 'project', label: 'Project', placeholder: 'LED Retrofit Berlin 2026', required: true },
   { key: 'gmailLabel', label: 'Gmail label', placeholder: 'LED-Berlin-2026', required: true },
-  { key: 'salesCalendarId', label: 'Sales calendar ID', placeholder: 'info@evertrust-germany.de', required: true },
+  { key: 'salesCalendarId', label: 'Sales calendar ID', placeholder: 'info@evertrust-germany.de', required: true, options: MAILBOXES },
   { key: 'whatsappNumber', label: 'WhatsApp number', placeholder: '+49…', required: true },
   { key: 'sender', label: 'Send from', placeholder: 'info@evertrust-germany.de', required: true, options: CAMPAIGN_SENDERS, optionLabels: CAMPAIGN_SENDER_LABELS },
 ];
@@ -87,9 +92,12 @@ function deriveGmailLabel(
 // the success toast reflects the actual deploy outcome (DEPLOYED / DRAFT / FAILED).
 export function AimLaunchDialog() {
   const [open, setOpen] = useState(false);
-  // sender defaults to info@ so the dropdown shows a valid choice and submit never
-  // posts an empty sender (which would fail the enum and skip the schema default).
-  const [form, setForm] = useState<Partial<Record<keyof CreateCampaignDto, string>>>({ sender: 'info' });
+  // sender + salesCalendarId default to info@ so their dropdowns show a valid
+  // choice and submit never posts an empty value.
+  const [form, setForm] = useState<Partial<Record<keyof CreateCampaignDto, string>>>({
+    sender: 'info',
+    salesCalendarId: CAMPAIGN_SENDER_LABELS.info,
+  });
   // The Gmail label auto-fills from the other inputs until the user edits it.
   const [labelEdited, setLabelEdited] = useState(false);
   const create = useCreateCampaign();
@@ -138,7 +146,7 @@ export function AimLaunchDialog() {
               : `Saved as draft (${c.project}) — the AIM webhook isn't configured yet.`,
         );
         setOpen(false);
-        setForm({ sender: 'info' });
+        setForm({ sender: 'info', salesCalendarId: CAMPAIGN_SENDER_LABELS.info });
         setLabelEdited(false);
       },
       onError: (error) => toast.error(error.message ?? 'Launch failed.'),
