@@ -6,7 +6,10 @@ import { Crosshair } from 'lucide-react';
 import {
   type CreateCampaignDto,
   type CampaignRegion,
+  type CampaignSender,
   CAMPAIGN_REGIONS,
+  CAMPAIGN_SENDERS,
+  CAMPAIGN_SENDER_LABELS,
 } from '@evertrust/shared';
 import { useCreateCampaign } from '@/hooks/use-campaigns';
 import { Button } from '@/components/ui/button';
@@ -40,6 +43,9 @@ type Field = {
   // When set, the field renders as a dropdown of these fixed choices instead of
   // a free-text input (e.g. the location zone).
   options?: readonly string[];
+  // Optional display labels for `options` when the shown text differs from the
+  // submitted value (e.g. sender key 'hanna' shown as 'hanna@evertrust-germany.de').
+  optionLabels?: Record<string, string>;
 };
 
 const FIELDS: readonly Field[] = [
@@ -52,6 +58,7 @@ const FIELDS: readonly Field[] = [
   { key: 'gmailLabel', label: 'Gmail label', placeholder: 'LED-Berlin-2026', required: true },
   { key: 'salesCalendarId', label: 'Sales calendar ID', placeholder: 'info@evertrust-germany.de', required: true },
   { key: 'whatsappNumber', label: 'WhatsApp number', placeholder: '+49…', required: true },
+  { key: 'sender', label: 'Send from', placeholder: 'info@evertrust-germany.de', required: true, options: CAMPAIGN_SENDERS, optionLabels: CAMPAIGN_SENDER_LABELS },
 ];
 
 // Keep only letters/digits in a label token (drops spaces + punctuation), so
@@ -80,7 +87,9 @@ function deriveGmailLabel(
 // the success toast reflects the actual deploy outcome (DEPLOYED / DRAFT / FAILED).
 export function AimLaunchDialog() {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<Partial<Record<keyof CreateCampaignDto, string>>>({});
+  // sender defaults to info@ so the dropdown shows a valid choice and submit never
+  // posts an empty sender (which would fail the enum and skip the schema default).
+  const [form, setForm] = useState<Partial<Record<keyof CreateCampaignDto, string>>>({ sender: 'info' });
   // The Gmail label auto-fills from the other inputs until the user edits it.
   const [labelEdited, setLabelEdited] = useState(false);
   const create = useCreateCampaign();
@@ -116,6 +125,7 @@ export function AimLaunchDialog() {
       gmailLabel: val('gmailLabel'),
       salesCalendarId: val('salesCalendarId'),
       whatsappNumber: val('whatsappNumber'),
+      sender: (val('sender') as CampaignSender) || 'info',
       ...(val('name') ? { name: val('name') } : {}),
     };
     create.mutate(input, {
@@ -128,7 +138,7 @@ export function AimLaunchDialog() {
               : `Saved as draft (${c.project}) — the AIM webhook isn't configured yet.`,
         );
         setOpen(false);
-        setForm({});
+        setForm({ sender: 'info' });
         setLabelEdited(false);
       },
       onError: (error) => toast.error(error.message ?? 'Launch failed.'),
@@ -171,7 +181,7 @@ export function AimLaunchDialog() {
                   <SelectContent>
                     {f.options.map((opt) => (
                       <SelectItem key={opt} value={opt}>
-                        {opt}
+                        {f.optionLabels?.[opt] ?? opt}
                       </SelectItem>
                     ))}
                   </SelectContent>

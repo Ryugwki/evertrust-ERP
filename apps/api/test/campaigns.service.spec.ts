@@ -21,6 +21,7 @@ const DTO: CreateCampaignDto = {
   gmailLabel: 'LED-Berlin-2026',
   salesCalendarId: 'info@evertrust-germany.de',
   whatsappNumber: '+4915112345678',
+  sender: 'info',
 };
 
 // Minimal AppConfigService stub — the service reads N8N_AIM_WEBHOOK_URL (deploy)
@@ -134,6 +135,9 @@ describe('CampaignsService — launch (create + AIM deploy)', () => {
       // 0 cities and bails.
       region: 'North',
       gmailLabel: 'LED-Berlin-2026',
+      // sender is passed through verbatim → AIM writes it into config.json,
+      // BAZOOKA branches on it to pick the Gmail credential.
+      sender: 'info',
     });
     expect(row.status).toBe('DEPLOYED');
     expect(row.driveFolderUrl).toBe('https://drive.google.com/drive/folders/F1');

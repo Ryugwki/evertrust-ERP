@@ -1042,6 +1042,17 @@ export const CAMPAIGN_REGIONS = [
 ] as const;
 export type CampaignRegion = (typeof CAMPAIGN_REGIONS)[number];
 
+// Outreach sender mailbox — which authorized Gmail identity REACH BAZOOKA sends a
+// campaign's cold outreach from. Pass-through to the AIM webhook → the campaign's
+// config.json (Drive), which BAZOOKA branches on at send time. 'info' is the
+// default/legacy sender; keep keys short + stable (they map to fixed n8n creds).
+export const CAMPAIGN_SENDERS = ['info', 'hanna'] as const;
+export type CampaignSender = (typeof CAMPAIGN_SENDERS)[number];
+export const CAMPAIGN_SENDER_LABELS: Record<CampaignSender, string> = {
+  info: 'info@evertrust-germany.de',
+  hanna: 'hanna@evertrust-germany.de',
+};
+
 export const CreateCampaignDto = z.object({
   name: z.string().max(60).optional(),
   niche: z.string().min(1).max(120),
@@ -1053,6 +1064,11 @@ export const CreateCampaignDto = z.object({
   gmailLabel: z.string().min(1).max(120),
   salesCalendarId: z.string().min(1).max(200),
   whatsappNumber: z.string().min(1).max(40),
+  // Which mailbox BAZOOKA sends this campaign's outreach from. Optional on the wire
+  // (defaults to info@) so older clients + existing campaigns stay on info@.
+  sender: z
+    .enum([...CAMPAIGN_SENDERS] as [CampaignSender, ...CampaignSender[]])
+    .default('info'),
 });
 export type CreateCampaignDto = z.infer<typeof CreateCampaignDto>;
 
