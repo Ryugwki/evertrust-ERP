@@ -102,6 +102,9 @@ export const PERMISSIONS = [
   'compliance:review',
   'campaigns:read',
   'campaigns:write',
+  'performance:read',
+  'performance:write',
+  'performance:admin',
   'audit:read',
   'users:manage',
   'org:manage',
@@ -142,6 +145,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'compliance:review',
     'campaigns:read',
     'campaigns:write',
+    // Managers see scorecards and record manual KPIs / tender contributions, but
+    // editing KPI definitions + weights stays an admin (performance:admin) action.
+    'performance:read',
+    'performance:write',
     'audit:read',
   ],
   // Employee (operator): read across the board, write where day-to-day work
@@ -1529,3 +1536,265 @@ export const UpdateArsenalSettingsDto = z
     path: ['bazookaTimezone'],
   });
 export type UpdateArsenalSettingsDto = z.infer<typeof UpdateArsenalSettingsDto>;
+
+// ============================================================================
+// Performance Management System (PMS) — KPI scorecards, attribution, AI reports.
+// Mirrors the lead_stage/computeDeadlineRisk patterns. Derived from the two PDFs
+// (PMS Framework + KPI Scorecards). The data-honesty rule lives here too: a KPI's
+// `source` says whether its value is real (AUTO), entered (MANUAL), approximated
+// (PARTIAL), or unavailable (NA → rendered "—", never fabricated).
+// ============================================================================
+
+export const KpiCategory = z.enum([
+  'OUTPUT',
+  'QUALITY',
+  'SPEED',
+  'COMPLIANCE',
+  'REVENUE',
+]);
+export type KpiCategory = z.infer<typeof KpiCategory>;
+export const KPI_CATEGORY_LABELS: Record<KpiCategory, string> = {
+  OUTPUT: 'Output',
+  QUALITY: 'Quality',
+  SPEED: 'Speed',
+  COMPLIANCE: 'Compliance',
+  REVENUE: 'Revenue',
+};
+
+export const KpiPeriod = z.enum(['WEEKLY', 'MONTHLY']);
+export type KpiPeriod = z.infer<typeof KpiPeriod>;
+
+// Data-honesty tag for a KPI value.
+export const KpiSource = z.enum(['AUTO', 'MANUAL', 'PARTIAL', 'NA']);
+export type KpiSource = z.infer<typeof KpiSource>;
+
+export const ScorecardZone = z.enum(['GREEN', 'YELLOW', 'ORANGE', 'RED']);
+export type ScorecardZone = z.infer<typeof ScorecardZone>;
+
+export const ContributionRole = z.enum([
+  'RESEARCH',
+  'QUALIFICATION',
+  'VALIDATION',
+  'SALES',
+  'ACCOUNT_MANAGER',
+]);
+export type ContributionRole = z.infer<typeof ContributionRole>;
+export const CONTRIBUTION_ROLE_LABELS: Record<ContributionRole, string> = {
+  RESEARCH: 'Research',
+  QUALIFICATION: 'Qualification',
+  VALIDATION: 'Validation',
+  SALES: 'Sales',
+  ACCOUNT_MANAGER: 'Account Manager',
+};
+
+export const ReportPeriod = z.enum(['DAILY', 'WEEKLY']);
+export type ReportPeriod = z.infer<typeof ReportPeriod>;
+export const ReportScope = z.enum(['COMPANY', 'DEPARTMENT', 'USER']);
+export type ReportScope = z.infer<typeof ReportScope>;
+
+// Zone thresholds from the PMS PDF (Green 90-100, Yellow 75-89, Orange 60-74,
+// Red <60). `min` is the inclusive floor; ordered high → low.
+export const SCORE_ZONE_META: Record<
+  ScorecardZone,
+  { label: string; min: number }
+> = {
+  GREEN: { label: 'High performer', min: 90 },
+  YELLOW: { label: 'Meets expectations', min: 75 },
+  ORANGE: { label: 'Needs improvement', min: 60 },
+  RED: { label: 'Immediate review', min: 0 },
+};
+
+// Map a 0-100 composite to its zone.
+export function zoneForScore(score: number): ScorecardZone {
+  if (score >= 90) return 'GREEN';
+  if (score >= 75) return 'YELLOW';
+  if (score >= 60) return 'ORANGE';
+  return 'RED';
+}
+
+// Bonus tier from the PMS PDF (advisory only — never auto-paid). 90+ full, 80-89
+// 75%, 70-79 50%, <70 none.
+export function bonusTierForScore(
+  score: number,
+): { label: string; pct: number } {
+  if (score >= 90) return { label: 'Full bonus', pct: 100 };
+  if (score >= 80) return { label: '75% bonus', pct: 75 };
+  if (score >= 70) return { label: '50% bonus', pct: 50 };
+  return { label: 'No bonus', pct: 0 };
+}
+
+// Seed KPI definitions for the Operational Tender Validation Team — the most
+// data-rich scorecard, built first (Phase B). Weights are the PDF's exact
+// 30/30/25/15; deadline compliance is tracked (weight 0) but unweighted, matching
+// the PDF which lists it as a KPI without a weight. `source` flags real vs partial.
+export interface KpiSeed {
+  key: string;
+  label: string;
+  category: KpiCategory;
+  weightPct: number;
+  period: KpiPeriod;
+  target: string;
+  source: KpiSource;
+}
+export const OPERATIONAL_VALIDATION_KPIS: KpiSeed[] = [
+  { key: 'submissions_per_week', label: 'Submissions / week', category: 'OUTPUT', weightPct: 30, period: 'WEEKLY', target: '10', source: 'AUTO' },
+  { key: 'profit_maximization', label: 'Profit maximization', category: 'REVENUE', weightPct: 30, period: 'WEEKLY', target: '80', source: 'AUTO' },
+  { key: 'risk_free_compliance', label: 'Risk-free compliance', category: 'COMPLIANCE', weightPct: 25, period: 'WEEKLY', target: '95%', source: 'PARTIAL' },
+  { key: 'ai_validation_accuracy', label: 'AI validation accuracy', category: 'QUALITY', weightPct: 15, period: 'WEEKLY', target: '90%', source: 'PARTIAL' },
+  { key: 'deadline_compliance', label: 'Submission deadline compliance', category: 'SPEED', weightPct: 0, period: 'WEEKLY', target: '95%', source: 'AUTO' },
+];
+
+// ---- DTOs ----
+export const KpiDefinitionDto = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  department: Department.nullable(),
+  key: z.string(),
+  label: z.string(),
+  category: KpiCategory,
+  weightPct: z.number().int(),
+  period: KpiPeriod,
+  target: z.string().nullable(),
+  source: KpiSource,
+  active: z.boolean(),
+  createdAt: z.string(),
+});
+export type KpiDefinitionDto = z.infer<typeof KpiDefinitionDto>;
+
+export const KpiValueDto = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  userId: z.string().uuid(),
+  kpiKey: z.string(),
+  period: KpiPeriod,
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  numericValue: z.number().nullable(),
+  displayValue: z.string().nullable(),
+  source: KpiSource,
+  enteredBy: z.string().uuid().nullable(),
+  note: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type KpiValueDto = z.infer<typeof KpiValueDto>;
+
+// Body for POST /performance/kpi-values — a manager records a MANUAL KPI value.
+export const CreateKpiValueDto = z.object({
+  userId: z.string().uuid(),
+  kpiKey: z.string().min(1).max(120),
+  period: KpiPeriod.optional(),
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  numericValue: z.number().nullable().optional(),
+  displayValue: z.string().max(60).optional(),
+  note: z.string().max(2000).optional(),
+});
+export type CreateKpiValueDto = z.infer<typeof CreateKpiValueDto>;
+
+export const ScorecardKpiDto = z.object({
+  key: z.string(),
+  label: z.string(),
+  category: KpiCategory,
+  value: z.string().nullable(),
+  target: z.string().nullable(),
+  source: KpiSource,
+});
+export type ScorecardKpiDto = z.infer<typeof ScorecardKpiDto>;
+
+// A user's computed scorecard for a period. categoryScores omits categories with
+// no data (never zero-filled). userName/department are denormalized for the UI.
+export const ScorecardDto = z.object({
+  id: z.string().uuid().nullable(),
+  userId: z.string().uuid(),
+  userName: z.string(),
+  department: Department.nullable(),
+  position: z.string().nullable(),
+  period: KpiPeriod,
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  categoryScores: z.record(KpiCategory, z.number()).nullable(),
+  composite: z.number(),
+  zone: ScorecardZone,
+  kpis: z.array(ScorecardKpiDto),
+  generatedAt: z.string().nullable(),
+});
+export type ScorecardDto = z.infer<typeof ScorecardDto>;
+
+export const TenderContributionDto = z.object({
+  id: z.string().uuid(),
+  tenderId: z.string().uuid(),
+  userId: z.string().uuid(),
+  userName: z.string().nullable(),
+  role: ContributionRole,
+  createdAt: z.string(),
+});
+export type TenderContributionDto = z.infer<typeof TenderContributionDto>;
+
+// Body for POST /tenders/:id/contributions.
+export const CreateTenderContributionDto = z.object({
+  userId: z.string().uuid(),
+  role: ContributionRole,
+});
+export type CreateTenderContributionDto = z.infer<
+  typeof CreateTenderContributionDto
+>;
+
+export const PerformanceReportDto = z.object({
+  id: z.string().uuid(),
+  organizationId: z.string().uuid(),
+  scope: ReportScope,
+  scopeId: z.string().nullable(),
+  period: ReportPeriod,
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  summary: z.unknown().nullable(),
+  aiRunId: z.string().uuid().nullable(),
+  generatedAt: z.string(),
+});
+export type PerformanceReportDto = z.infer<typeof PerformanceReportDto>;
+
+// Executive rollup for the CEO / Performance Executive tab — all computed from
+// scorecards (no AI yet; the narrative AI brief arrives in Phase D).
+export const DepartmentRollupDto = z.object({
+  department: Department.nullable(),
+  label: z.string(),
+  avg: z.number(),
+  count: z.number(),
+  topName: z.string().nullable(),
+});
+export type DepartmentRollupDto = z.infer<typeof DepartmentRollupDto>;
+
+export const PerformanceOverviewDto = z.object({
+  period: KpiPeriod,
+  periodStart: z.string().nullable(),
+  periodEnd: z.string().nullable(),
+  companyAvg: z.number(),
+  members: z.number(),
+  highPerformers: z.number(),
+  needsAttention: z.number(),
+  departments: z.array(DepartmentRollupDto),
+  // The lowest scorecards — who to look at first.
+  attention: z.array(ScorecardDto),
+});
+export type PerformanceOverviewDto = z.infer<typeof PerformanceOverviewDto>;
+
+// AI Management brief (Phase D) — the Claude-generated narrative over the
+// scorecards. `headline` is one sentence; `bullets` are 3-5 factual observations;
+// `topAction` is the single recommended next step. Used as the Claude tool schema.
+export const PerformanceBriefSummary = z.object({
+  headline: z.string(),
+  bullets: z.array(z.string()),
+  topAction: z.string(),
+});
+export type PerformanceBriefSummary = z.infer<typeof PerformanceBriefSummary>;
+
+export const PerformanceBriefDto = z.object({
+  // false when ANTHROPIC_API_KEY is unset — the UI then shows a "configure key"
+  // note instead of an invented summary.
+  configured: z.boolean(),
+  generatedAt: z.string().nullable(),
+  period: KpiPeriod,
+  summary: PerformanceBriefSummary.nullable(),
+});
+export type PerformanceBriefDto = z.infer<typeof PerformanceBriefDto>;

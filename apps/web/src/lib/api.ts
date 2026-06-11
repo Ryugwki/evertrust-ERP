@@ -43,6 +43,13 @@ import {
   ScanLeadsResultDto,
   SendDraftDto,
   SendDraftResultDto,
+  ScorecardDto,
+  PerformanceOverviewDto,
+  PerformanceBriefDto,
+  KpiDefinitionDto,
+  CreateKpiValueDto,
+  TenderContributionDto,
+  CreateTenderContributionDto,
   MeDto,
   PriceAssistResultDto,
   PriceObservationDto,
@@ -806,5 +813,67 @@ export const api = {
         body: UpdateCustomerDto.parse(input),
         schema: CustomerDto,
       }),
+  },
+
+  // ---- Performance (PMS) ----
+  performance: {
+    scorecards: (period = 'WEEKLY', signal?: AbortSignal) =>
+      request<ScorecardDto[]>(`/performance/scorecards?period=${period}`, {
+        schema: z.array(ScorecardDto),
+        signal,
+      }),
+
+    overview: (period = 'WEEKLY', signal?: AbortSignal) =>
+      request<PerformanceOverviewDto>(`/performance/overview?period=${period}`, {
+        schema: PerformanceOverviewDto,
+        signal,
+      }),
+
+    definitions: (signal?: AbortSignal) =>
+      request<KpiDefinitionDto[]>('/performance/definitions', {
+        schema: z.array(KpiDefinitionDto),
+        signal,
+      }),
+
+    brief: (period = 'WEEKLY', signal?: AbortSignal) =>
+      request<PerformanceBriefDto>(`/performance/brief?period=${period}`, {
+        schema: PerformanceBriefDto,
+        signal,
+      }),
+
+    generateBrief: (period = 'WEEKLY') =>
+      request<PerformanceBriefDto>(
+        `/performance/brief/generate?period=${period}`,
+        { method: 'POST', schema: PerformanceBriefDto },
+      ),
+
+    createKpiValue: (input: z.infer<typeof CreateKpiValueDto>) =>
+      request<{ ok: true }>('/performance/kpi-values', {
+        method: 'POST',
+        body: CreateKpiValueDto.parse(input),
+        schema: z.object({ ok: z.literal(true) }),
+      }),
+
+    contributions: (tenderId: string, signal?: AbortSignal) =>
+      request<TenderContributionDto[]>(
+        `/tenders/${tenderId}/contributions`,
+        { schema: z.array(TenderContributionDto), signal },
+      ),
+
+    addContribution: (
+      tenderId: string,
+      input: z.infer<typeof CreateTenderContributionDto>,
+    ) =>
+      request<{ ok: true }>(`/tenders/${tenderId}/contributions`, {
+        method: 'POST',
+        body: CreateTenderContributionDto.parse(input),
+        schema: z.object({ ok: z.literal(true) }),
+      }),
+
+    removeContribution: (tenderId: string, contributionId: string) =>
+      request<{ ok: true }>(
+        `/tenders/${tenderId}/contributions/${contributionId}`,
+        { method: 'DELETE', schema: z.object({ ok: z.literal(true) }) },
+      ),
   },
 };

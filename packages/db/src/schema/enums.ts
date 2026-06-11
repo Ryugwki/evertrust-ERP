@@ -154,3 +154,46 @@ export const leadStageEnum = pgEnum('lead_stage', [
 // Where a lead came from: N8N = imported from the Hot Leads Pipeline; MANUAL =
 // added by hand in the ERP.
 export const leadSourceEnum = pgEnum('lead_source', ['N8N', 'MANUAL']);
+
+// ---- Performance Management System (PMS) ----
+// The five KPI categories every scorecard rolls up to (PMS Framework PDF).
+export const kpiCategoryEnum = pgEnum('kpi_category', [
+  'OUTPUT',
+  'QUALITY',
+  'SPEED',
+  'COMPLIANCE',
+  'REVENUE',
+]);
+// Scorecard / KPI cadence.
+export const kpiPeriodEnum = pgEnum('kpi_period', ['WEEKLY', 'MONTHLY']);
+// Where a KPI value comes from — the data-honesty tag. AUTO = computed from real
+// ERP data; MANUAL = manager-entered; PARTIAL = approximated from related data;
+// NA = no source yet (rendered as "—", never fabricated).
+export const kpiSourceEnum = pgEnum('kpi_source', [
+  'AUTO',
+  'MANUAL',
+  'PARTIAL',
+  'NA',
+]);
+// Score zones (PMS PDF): GREEN 90-100, YELLOW 75-89, ORANGE 60-74, RED <60.
+export const scorecardZoneEnum = pgEnum('scorecard_zone', [
+  'GREEN',
+  'YELLOW',
+  'ORANGE',
+  'RED',
+]);
+// Revenue attribution role on a tender (who found/qualified/validated/sold/managed).
+export const contributionRoleEnum = pgEnum('contribution_role', [
+  'RESEARCH',
+  'QUALIFICATION',
+  'VALIDATION',
+  'SALES',
+  'ACCOUNT_MANAGER',
+]);
+// AI Management Layer report cadence + scope.
+export const reportPeriodEnum = pgEnum('report_period', ['DAILY', 'WEEKLY']);
+export const reportScopeEnum = pgEnum('report_scope', [
+  'COMPANY',
+  'DEPARTMENT',
+  'USER',
+]);

@@ -1,5 +1,6 @@
 import {
   Contact,
+  Gauge,
   Headset,
   LayoutDashboard,
   LineChart,
@@ -30,5 +31,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/marketing', label: 'Marketing', icon: LineChart, permission: 'campaigns:read', group: 'Acquisition' },
   { href: '/key-account', label: 'Key Account', icon: Contact, permission: 'campaigns:read', group: 'Acquisition' },
   { href: '/sales', label: 'Sales', icon: Headset, permission: 'campaigns:read', group: 'Acquisition' },
+  { href: '/performance', label: 'Performance', icon: Gauge, permission: 'performance:read', group: 'Management' },
   { href: '/users', label: 'Users', icon: Users, permission: 'users:manage', group: 'Administration' },
 ];

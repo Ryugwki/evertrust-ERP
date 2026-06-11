@@ -26,6 +26,7 @@ import { DeadlineRiskBadge } from './deadline-risk-badge';
 import { TenderTransition } from './tender-transition';
 import { TenderEditDialog } from './tender-edit-dialog';
 import { TenderAssigneeCard } from './tender-assignee-card';
+import { TenderContributorsCard } from './tender-contributors-card';
 import { TenderApprovalCard } from './tender-approval-card';
 import { TenderSubmissionCard } from './tender-submission-card';
 import { TenderDocumentsCard } from './tender-documents-card';
@@ -125,6 +126,8 @@ function TenderDetailBody({ tender }: { tender: TenderDto }) {
       <TenderSubmissionCard tenderId={tender.id} />
 
       <TenderAssigneeCard tenderId={tender.id} />
+
+      <TenderContributorsCard tenderId={tender.id} />
 
       <Card>
         <CardHeader>

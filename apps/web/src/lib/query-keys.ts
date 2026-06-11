@@ -118,4 +118,16 @@ export const queryKeys = {
     list: () => ['customers', 'list'] as const,
     detail: (id: string) => ['customers', 'detail', id] as const,
   },
+
+  // Performance Management System: scorecards + executive rollup, by period.
+  performance: {
+    all: ['performance'] as const,
+    scorecards: (period: string) =>
+      ['performance', 'scorecards', period] as const,
+    overview: (period: string) => ['performance', 'overview', period] as const,
+    brief: (period: string) => ['performance', 'brief', period] as const,
+    definitions: () => ['performance', 'definitions'] as const,
+    contributions: (tenderId: string) =>
+      ['performance', 'contributions', tenderId] as const,
+  },
 };
